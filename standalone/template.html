@@ -76,6 +76,9 @@ h2 { font-family: var(--display); font-weight: 400; font-size: 22px; text-align:
 .panel p { margin: 0; }
 .note { font-size: 14px; color: var(--muted); line-height: 1.45; }
 .code { font-family: var(--display); font-size: 40px; letter-spacing: 8px; text-align: center; color: var(--gold); }
+.req { outline: 2px solid var(--gold); }
+.req .two button { padding: 14px 8px; font-size: 17px; }
+.req .two button.okb { background: var(--good); color: var(--good-ink); }
 .rowline { display: flex; justify-content: space-between; gap: 8px; background: #0005; padding: 10px 12px; border-radius: 10px; }
 
 .board { display: grid; gap: 5px; }
@@ -191,6 +194,8 @@ class Game {
     this.pl = {};
     for (const n of NAMES) this.pl[n] = { score: 0, joined: full ? false : !!old?.[n]?.joined, on: full ? false : !!old?.[n]?.on, peer: full ? null : old?.[n]?.peer ?? null };
     this.g = { ph: 'lobby', ri: -1, used: null, cat: null, ch: null, dl: null, cur: null, fin: null, msg: '' };
+    this.rq = this.rq || [];
+    this.ok = this.ok || {};
   }
   clear() { clearTimeout(this.timer); this.timer = null; clearTimeout(this.buzzWin?.t); this.buzzWin = null; }
   phase(ph, ms, next) {
@@ -205,14 +210,25 @@ class Game {
   online() { return NAMES.filter((n) => this.pl[n].joined && this.pl[n].on); }
 
   // --- игроки ---
-  join(name, peer) {
+  // Вход по ссылке: новый телефон попадает в список заявок, хост разрешает или отклоняет
+  join(name, peer, trusted) {
     const p = this.pl[name];
     if (!p) return 'Нет такого игрока';
     if (p.on && p.peer && p.peer !== peer) return name + ' уже играет на другом телефоне';
+    if (!trusted && !this.ok[peer]) {
+      this.rq = this.rq.filter((r) => r[1] !== peer).concat([[name, peer]]).slice(-8);
+      this.changed();
+      return null;
+    }
     for (const n of NAMES) if (n !== name && this.pl[n].peer === peer) { this.pl[n].on = false; this.pl[n].peer = null; }
     Object.assign(p, { joined: true, on: true, peer });
     this.changed();
     return null;
+  }
+  approve(peer, yes) {
+    const r = this.rq.find((x) => x[1] === peer);
+    this.rq = this.rq.filter((x) => x[1] !== peer);
+    if (r && yes) { this.ok[peer] = 1; if (this.join(r[0], peer, true)) this.changed(); } else this.changed();
   }
   markPeer(peer) {
     let ch = false;
@@ -223,6 +239,7 @@ class Game {
   dropPeer(peer) {
     let ch = false;
     for (const n of NAMES) if (this.pl[n].peer === peer && this.pl[n].on) { this.pl[n].on = false; ch = true; }
+    if (this.rq.some((r) => r[1] === peer)) { this.rq = this.rq.filter((r) => r[1] !== peer); ch = true; }
     if (ch) this.changed();
   }
 
@@ -357,9 +374,9 @@ class Game {
   }
 
   // --- снимок ---
-  snapshot() { return { pl: this.pl, g: this.g }; }
+  snapshot() { return { pl: this.pl, g: this.g, ok: this.ok }; }
   restore(s) {
-    this.pl = s.pl; this.g = s.g;
+    this.pl = s.pl; this.g = s.g; this.ok = s.ok || {}; this.rq = [];
     for (const n of NAMES) if (this.pl[n].peer !== 'local') this.pl[n].on = false;
     const ph = this.g.ph;
     if (['roundIntro', 'cat', 'reading', 'buzzing', 'answering', 'reveal'].includes(ph)) { this.g.cur = null; setTimeout(() => this.next(), 0); }
@@ -370,7 +387,7 @@ class Game {
   pub() {
     const g = this.g, c = g.cur, f = g.fin;
     return {
-      ph: g.ph, ri: g.ri, used: g.used ? g.used.join('') : '', ch: g.ch, dl: g.dl, now: Date.now(), msg: g.msg,
+      rq: this.rq, ph: g.ph, ri: g.ri, used: g.used ? g.used.join('') : '', ch: g.ch, dl: g.dl, now: Date.now(), msg: g.msg,
       pl: NAMES.map((n) => [this.pl[n].score, this.pl[n].joined ? 1 : 0, this.pl[n].on ? 1 : 0, this.pl[n].peer]),
       cur: c ? { ti: c.ti, qi: c.qi, v: c.v, cat: c.cat ? 1 : 0, ct: c.ct, an: c.an, tr: c.tr, at: c.at, res: c.res } : null,
       fin: f ? { fi: f.fi, el: f.el, st: Object.keys(f.st), an: Object.keys(f.an), res: f.res } : null,
@@ -433,8 +450,9 @@ function hostAct(peer, k, d, self) {
   const G = app.game;
   if (!G) return;
   const nameOf = () => (self && app.mode === 'local') ? null : NAMES.find((n) => G.pl[n].peer === peer && G.pl[n].on);
+  if (k === 'approve' || k === 'deny') { if (self) G.approve(d, k === 'approve'); return; }
   if (k === 'join') {
-    const err = G.join(d, peer);
+    const err = G.join(String(d), peer, self);
     if (err && self) toast(err);
     return;
   }
@@ -451,7 +469,7 @@ function hostAct(peer, k, d, self) {
     case 'fans': G.fanswer(name, d.text); break;
     case 'skip': G.skipRound(); break;
     case 'new': if (G.g.ph === 'gameover' || G.g.ph === 'lobby') G.reset(false), G.changed(); break;
-    case 'abort': G.reset(false); G.changed(); break;
+    case 'abort': if (self) { G.reset(false); G.changed(); } break;
   }
 }
 
@@ -471,14 +489,9 @@ function onGameChange() {
 // ================= Комнаты (онлайн) =================
 async function initRoom() {
   try {
-    const room = await window.claude?.use?.('room');
+    const room = window.MG_ROOM ? window.MG_ROOM() : await window.claude?.use?.('room');
     if (!room) return;
     app.room = room;
-    app.lobby = room;
-    room.onPeers((ch) => {
-      app.games = ch.peers.filter((p) => p.presence?.game && !p.sameTab).map((p) => ({ code: String(p.presence.game).slice(0, 8), host: String(p.presence.hostName || '').slice(0, 20) }));
-      if (!app.mode) render(true);
-    }, () => { app.room = null; if (!app.mode) render(true); });
     if (!app.mode) render(true);
   } catch (e) { app.room = null; }
 }
@@ -526,18 +539,18 @@ async function joinGameRoom(code) {
 
 async function hostOnline(saved) {
   if (!app.room) return toast('Онлайн недоступен');
-  const code = saved?.code || String(1000 + Math.floor(Math.random() * 9000));
+  const code = saved?.code || String(100000 + Math.floor(Math.random() * 900000));
   app.mode = 'host';
   app.game = new Game(onGameChange, saved?.snap);
   try { await joinGameRoom(code); } catch (e) { app.mode = null; return toast('Не удалось открыть комнату'); }
-  app.lobby.presence({ game: code, hostName: app.me || '' }).catch(() => {});
+  try { history.replaceState(null, '', '#g' + code); } catch (e) { /* без адреса */ }
   keepAwake();
   onGameChange();
 }
 
 async function joinOnline(code) {
-  code = String(code || '').replace(/\D/g, '').slice(0, 4);
-  if (code.length !== 4) return toast('Код — 4 цифры');
+  code = String(code || '').replace(/\D/g, '').slice(0, 6);
+  if (code.length < 4) return toast('Введи код игры (цифры)');
   if (!app.room) return toast('Онлайн недоступен');
   app.mode = 'client';
   app.P = null; app.hostSeen = false; app.joinTried = false;
@@ -556,10 +569,12 @@ function startLocal(saved) {
 }
 
 function exitToMenu() {
-  if (app.mode === 'host') { app.lobby?.presence({ game: null, hostName: null }).catch(() => {}); store.del('host'); app.game?.clear(); }
+  if (app.mode === 'host') { app.gameRoom?.presence({ host: null, s: null }).catch(() => {}); store.del('host'); app.game?.clear(); }
   if (app.mode === 'local') { store.del('local'); app.game?.clear(); }
   if (app.mode === 'client') store.del('client');
   app.gameRoom?.leave().catch(() => {});
+  try { history.replaceState(null, '', location.pathname); } catch (e) { /* без адреса */ }
+  app.hashCode = null;
   Object.assign(app, { mode: null, game: null, P: null, gameRoom: null, code: null, me: null, lastSeq: {}, hostSeen: false, seq: 0 });
   render(true);
 }
@@ -609,7 +624,7 @@ function render(force) {
   renderScores();
   const P = app.P;
   let key, view;
-  if (!app.mode) { key = 'menu' + app.games.map((g) => g.code).join() + !!app.room; view = viewMenu; }
+  if (!app.mode) { key = 'menu' + !!app.room; view = viewMenu; }
   else if (!P) { key = 'wait' + app.hostSeen; view = viewWaitHost; }
   else if (app.mode !== 'local' && !myName() && P.ph === 'lobby') { key = 'choose' + P.pl.map((p) => p[2] + p[3]).join(); view = viewChoose; }
   else {
@@ -628,11 +643,14 @@ function render(force) {
     view = { lobby: viewLobby, roundIntro: viewRoundIntro, board: viewBoard, cat: viewCat, reading: viewQuestion, buzzing: viewQuestion, answering: viewQuestion, reveal: viewQuestion, finalStake: viewFinalStake, finalAnswer: viewFinalAnswer, gameover: viewGameOver }[P.ph];
     if (!myName() && app.mode !== 'local' && P.ph !== 'lobby') { key = 'late' + key; view = viewLate; }
   }
+  const rq = app.mode === 'host' && P?.rq?.length ? P.rq : null;
+  const pending = app.mode === 'client' && P?.rq?.some((r) => r[1] === app.myPeer);
+  key += '|' + JSON.stringify(rq) + pending;
   if (!force && key === viewKey) return;
   viewKey = key;
   const focused = document.activeElement?.id;
   const keep = focused ? document.getElementById(focused)?.value : null;
-  main.innerHTML = view();
+  main.innerHTML = (rq ? requestsHtml(rq) : '') + (pending ? viewPending() : view());
   bind();
   const el = focused && document.getElementById(focused);
   if (el) { if (keep && 'value' in el && !el.value) el.value = keep; el.focus(); }
@@ -656,18 +674,35 @@ function tick() {
 requestAnimationFrame(tick);
 
 // ---------- Экраны ----------
+function requestsHtml(rq) {
+  return `<div class="panel req">${rq.map(([n, peer]) => `
+    <p><b>${esc(n)}</b> хочет войти в игру</p>
+    <div class="two"><button class="okb" data-appr="${esc(peer)}">Разрешить</button><button data-deny="${esc(peer)}">Отклонить</button></div>`).join('')}</div>`;
+}
+function viewPending() {
+  return `<div class="logo">МОЯ ИГРА</div><p class="status">Ждём, пока хост разрешит вход…</p>
+    <p class="note" style="text-align:center">Попроси владельца игры нажать «Разрешить» на своём телефоне.</p>
+    <button class="btn ghost" data-a="exit">Назад</button>`;
+}
+function inviteUrl() { return location.origin + location.pathname + '#g' + app.code; }
+function inviteHtml() {
+  if (app.mode !== 'host') return `<p class="sub">Игра ${esc(app.code)}${myName() ? ' · ты: <b>' + esc(myName()) + '</b>' : ''}</p>`;
+  return `<p class="sub">Код игры</p><div class="code">${esc(app.code)}</div>
+    ${window.MG_BUILD === 'pages' ? `<div class="panel"><p class="note">Отправь ссылку друзьям. Каждого, кто зайдёт, нужно будет разрешить.</p>
+      <input id="invite" readonly value="${esc(inviteUrl())}">
+      <div class="two"><button class="btn sec" data-a="copy">Копировать</button><button class="btn sec" data-a="share">Отправить…</button></div></div>` : ''}`;
+}
 function viewMenu() {
   const hs = store.get('host'), ls = store.get('local'), cs = store.get('client');
   const fresh = (s) => s && Date.now() - s.at < 6 * 3600e3;
   const online = app.room ? `
     <div class="panel">
       <h2>Каждый со своего телефона</h2>
-      <p class="note">Один телефон создаёт игру, остальные входят по коду. Все открывают эту страницу в claude.ai.</p>
+      <p class="note">${window.MG_BUILD === 'pages' ? 'Один телефон создаёт игру и отправляет ссылку. Остальные заходят по ссылке без регистрации, хост разрешает каждого.' : 'Один телефон создаёт игру, остальные входят по коду. Все открывают эту страницу в claude.ai.'}</p>
       ${fresh(hs) ? `<button class="btn" data-a="hostResume">Продолжить мою игру (код ${esc(hs.code)})</button>` : ''}
       <button class="btn ${fresh(hs) ? 'sec' : ''}" data-a="host">Создать игру</button>
-      ${app.games.map((g) => `<button class="btn sec" data-a="joinCode" data-code="${esc(g.code)}">Войти в игру ${esc(g.code)}${g.host ? ' · ' + esc(g.host) : ''}</button>`).join('')}
       <div class="two" style="grid-template-columns: 1fr auto">
-        <input id="code" inputmode="numeric" maxlength="4" placeholder="Код игры" value="${esc(fresh(cs) ? cs.code : '')}">
+        <input id="code" inputmode="numeric" maxlength="6" placeholder="Код игры" value="${esc(app.hashCode || (fresh(cs) ? cs.code : ''))}">
         <button class="btn sec" style="padding:0 18px; width:auto; font-size:16px" data-a="join">Войти</button>
       </div>
     </div>` : `
@@ -708,7 +743,7 @@ function viewWaitHost() {
 function viewChoose() {
   const ps = players();
   return `<div class="logo">МОЯ ИГРА</div>
-    ${app.mode === 'host' ? `<p class="sub">Код игры для остальных:</p><div class="code">${esc(app.code)}</div>` : `<p class="sub">Игра ${esc(app.code)}</p>`}
+    ${inviteHtml()}
     <p class="status">Кто ты?</p>
     <div class="two">${ps.map((p) => `<button data-join="${esc(p.name)}" class="${p.on ? 'taken' : ''}" ${p.on ? 'disabled' : ''}>${esc(p.name)}${p.on ? '<br><small>уже в игре</small>' : ''}</button>`).join('')}</div>`;
 }
@@ -735,7 +770,7 @@ function viewLobby() {
   }
   const on = ps.filter((p) => p.on);
   return `<div class="logo">МОЯ ИГРА</div>
-    ${app.mode === 'host' ? `<p class="sub">Код игры для остальных:</p><div class="code">${esc(app.code)}</div>` : `<p class="sub">Игра ${esc(app.code)} · ты: <b>${esc(myName())}</b></p>`}
+    ${inviteHtml()}
     <div class="stack">${ps.map((p) => `<div class="rowline"><span>${esc(p.name)}</span><span>${p.on ? '✅ на месте' : '⏳ ждём'}</span></div>`).join('')}</div>
     <button class="btn" data-a="start" ${on.length ? '' : 'disabled'}>Начать игру (${on.length} из 4)</button>
     ${rulesHtml()}`;
@@ -871,6 +906,8 @@ function bind() {
     if (app.mode === 'client') { store.set('client', { code: app.code, me: app.me, at: Date.now() }); app.joinTried = true; }
     act('join', app.me);
   });
+  main.querySelectorAll('[data-appr]').forEach((b) => b.onclick = () => act('approve', b.dataset.appr));
+  main.querySelectorAll('[data-deny]').forEach((b) => b.onclick = () => act('deny', b.dataset.deny));
   main.querySelectorAll('[data-sel]').forEach((b) => b.onclick = () => {
     const n = b.dataset.sel;
     localSel = localSel.includes(n) ? localSel.filter((x) => x !== n) : NAMES.filter((x) => x === n || localSel.includes(x));
@@ -896,6 +933,14 @@ function bind() {
     stake: (b) => act('stake', { a: Number($('#stake').value), who: b.dataset.who }),
     fans: (b) => { const v = $('#fans').value.trim(); if (!v) return toast('Впиши ответ'); act('fans', { text: v, who: b.dataset.who }); },
     new: () => act('new', {}),
+    copy: () => {
+      const inp = $('#invite');
+      navigator.clipboard?.writeText(inp.value).then(() => toast('Ссылка скопирована'), () => { inp.select(); toast('Выдели и скопируй ссылку'); });
+    },
+    share: () => {
+      if (navigator.share) navigator.share({ title: 'Моя игра', text: 'Заходи в «Мою игру»!', url: inviteUrl() }).catch(() => {});
+      else { $('#invite').select(); toast('Скопируй ссылку и отправь'); }
+    },
   };
   main.querySelectorAll('[data-a]').forEach((b) => {
     const h = actions[b.dataset.a];
@@ -945,10 +990,16 @@ $('#menu').onclick = (e) => {
 
 // ---------- Запуск ----------
 function boot() {
+  const m = /^#g(\d{4,6})$/.exec(location.hash);
+  if (m) app.hashCode = m[1];
   render(true);
   initRoom().then(() => {
     const cs = store.get('client');
     if (!app.mode && cs && Date.now() - (cs.at || Date.now()) < 6 * 3600e3 && app.room && cs.me) { app.me = cs.me; }
+    if (!app.mode && app.room && app.hashCode) {
+      const hs = store.get('host');
+      if (hs && hs.code === app.hashCode) hostOnline(hs); else joinOnline(app.hashCode);
+    }
   });
 }
 boot();

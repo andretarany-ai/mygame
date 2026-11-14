@@ -35,9 +35,14 @@ npm start
 Все вопросы в `questions.js`: `q` — вопрос, `a` — ответ, `alt` — другие принимаемые варианты.
 
 ## Версия без сервера (только телефон)
-`standalone/moya-igra.html` — вся игра в одном файле (собирается командой `node standalone/build.js`
-из `standalone/template.html` и `questions.js`). Опубликована как страница claude.ai:
-- **Один телефон на всех** — работает у любого, кто открыл ссылку.
-- **Каждый со своего телефона** — один телефон создаёт игру (он же ведущий, экран должен быть включён),
-  остальные входят по 4‑значному коду. Нужно, чтобы каждый открыл страницу в claude.ai под аккаунтом,
-  которому дан доступ к странице.
+Вся игра в одном файле. Собирается командой `node standalone/build.js` из `standalone/template.html`,
+`standalone/mqtt-room.js` и `questions.js`:
+- `docs/index.html` — сайт для **GitHub Pages**. Вход по ссылке без регистрации: хост создаёт игру,
+  отправляет ссылку, каждого вошедшего разрешает кнопкой. Телефоны связываются через публичный
+  MQTT-брокер (broker.emqx.io, запасной — broker.hivemq.com).
+- `standalone/moya-igra.html` — та же игра для страницы claude.ai (там онлайн только для вошедших в аккаунт).
+
+### Как включить GitHub Pages (можно с телефона, в браузере на github.com)
+1. Settings → General → Danger Zone → **Change visibility → Public** (бесплатные Pages работают только для публичных репозиториев).
+2. Settings → **Pages** → Source: *Deploy from a branch* → ветка `claude/admiring-goodall-1cv0sh`, папка **/docs** → Save.
+3. Через 1–2 минуты игра откроется по адресу `https://andretarany-ai.github.io/mygame/`.
