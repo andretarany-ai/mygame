@@ -196,7 +196,7 @@ h2 { font-family: var(--display); font-weight: 400; font-size: 20px; margin: 0; 
 .die { width: 34px; height: 34px; border-radius: 8px; background: #fff; color: #111; display: grid; place-items: center; font-family: var(--display); font-size: 20px; box-shadow: 0 3px 0 #0006; }
 .die.roll { animation: roll .5s ease-out; }
 @keyframes roll { 0% { transform: rotate(-200deg) scale(.6); } 100% { transform: none; } }
-#banner { position: absolute; left: 50%; top: 18%; transform: translateX(-50%); background: #000c; color: #fff; padding: 10px 16px; border-radius: 14px; font-weight: 800; font-size: 16px; text-align: center; max-width: 90%; pointer-events: none; animation: pop .35s ease-out; z-index: 6; }
+#banner { position: absolute; left: 50%; top: 24%; transform: translateX(-50%); background: #000c; color: #fff; padding: 10px 16px; border-radius: 14px; font-weight: 800; font-size: 16px; text-align: center; max-width: 90%; pointer-events: none; animation: pop .35s ease-out; z-index: 6; }
 #banner.big { font-size: 22px; top: 40%; }
 #banner .plus { color: #6ef0a3; } #banner .minus { color: #ff8e93; }
 @keyframes pop { 0% { transform: translateX(-50%) scale(.6); opacity: 0; } 100% { transform: translateX(-50%) scale(1); opacity: 1; } }
@@ -256,7 +256,7 @@ main { padding-block: 10px 28px; display: grid; gap: 10px; }
 .pitem .meta { font-size: 12px; color: var(--muted); }
 .tag { font-size: 11px; padding: 2px 6px; border-radius: 6px; background: #ff5d6333; color: #ffb3b6; margin-left: 4px; }
 .log { display: grid; gap: 4px; font-size: 13.5px; color: var(--muted); }
-.log div:last-child { color: var(--fg); }
+.log div:first-child { color: var(--fg); }
 
 .overlay { position: fixed; inset: 0; background: #000b; display: flex; align-items: flex-end; justify-content: center; z-index: 20; padding: 12px max(12px, env(safe-area-inset-left, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)); }
 .sheet { width: min(100%, 520px); max-height: 88vh; overflow-y: auto; background: var(--bg2); border-radius: 16px; padding: 12px; display: grid; gap: 10px; }
@@ -275,6 +275,49 @@ main { padding-block: 10px 28px; display: grid; gap: 10px; }
 .pnames button .dot { width: 14px; height: 14px; border-radius: 50%; }
 #toast { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: #000d; padding: 10px 16px; border-radius: 12px; z-index: 30; max-width: 90vw; text-align: center; }
 details { color: var(--muted); } details p { color: var(--fg); line-height: 1.5; font-size: 14px; } summary { cursor: pointer; text-align: center; }
+/* Полноэкранная игра: поле под всем, сверху — игроки, снизу — стеклянная панель */
+body.ingame { overflow: hidden; }
+body.ingame #app { max-width: none; padding: 0; }
+body.ingame #boardWrap { position: fixed; inset: 0; width: 100%; height: 100%; max-height: none; aspect-ratio: auto; border-radius: 0; margin: 0; }
+body.ingame #topbar { position: fixed; top: 0; left: 0; right: 0; z-index: 8; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none;
+  padding: calc(env(safe-area-inset-top, 0px) + 8px) max(10px, env(safe-area-inset-right, 0px)) 14px max(10px, env(safe-area-inset-left, 0px));
+  background: linear-gradient(#0a0f18e6, #0a0f1800); }
+body.ingame #topbar::-webkit-scrollbar { display: none; }
+body.ingame .chip { flex: 1 1 0; min-width: 76px; background: #16233acc; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid #ffffff1a; border-radius: 14px; padding: 5px 8px; }
+body.ingame .chip.turn { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold), 0 0 16px #ffc93c55; }
+body.ingame #main { position: fixed; z-index: 8; left: 50%; bottom: 0; transform: translateX(-50%); width: min(100%, 620px); max-height: 50vh; overflow-y: auto;
+  margin: 0; padding: 10px max(12px, env(safe-area-inset-right, 0px)) calc(8px + env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px));
+  background: #0c1421d9; backdrop-filter: blur(16px) saturate(1.3); -webkit-backdrop-filter: blur(16px) saturate(1.3);
+  border: 1px solid #ffffff1a; border-bottom: 0; border-radius: 22px 22px 0 0; box-shadow: 0 -10px 30px #0008; gap: 8px; }
+body.ingame #main::before { content: ""; justify-self: center; width: 38px; height: 4px; border-radius: 4px; background: #ffffff33; }
+body.ingame #boardHint { top: calc(env(safe-area-inset-top, 0px) + 74px); bottom: auto; }
+body.ingame #dice { top: calc(env(safe-area-inset-top, 0px) + 108px); right: max(10px, env(safe-area-inset-right, 0px)); }
+body.ingame #viewBtn { display: none; }
+.act { display: grid; gap: 8px; }
+.line { display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 800; font-size: 16px; text-align: center; min-height: 28px; }
+.line .pdot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+.row3 { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 6px; }
+.row3 button, .rowN button { padding: 13px 6px; font-weight: 800; font-size: 15px; border-radius: 14px; }
+.rowN { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; }
+.gold { background: linear-gradient(#ffd866, #ffb703); color: var(--ink); box-shadow: 0 3px 0 #a86f00; }
+.gold:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 1px 0 #a86f00; }
+.glass { background: #ffffff12; border: 1px solid #ffffff1f; color: var(--fg); }
+.mega { padding: 16px; font-size: 19px; font-family: var(--display); letter-spacing: .5px; border-radius: 16px; width: 100%; }
+.offer { display: grid; grid-template-columns: 8px auto 1fr auto; gap: 10px; align-items: center; background: #fffaf0; color: #1b1b1b; border-radius: 14px; padding: 8px 10px 8px 0; overflow: hidden; text-align: left; width: 100%; }
+.offer .band { align-self: stretch; }
+.offer .em { font-size: 28px; }
+.offer .nm { font-weight: 800; font-size: 15px; line-height: 1.2; min-width: 0; }
+.offer .sm { font-size: 12px; color: #6a5a3a; font-weight: 600; }
+.offer .pr { font-family: var(--display); font-size: 18px; }
+.dock { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; border-top: 1px solid #ffffff14; padding-top: 6px; }
+.dock button { background: transparent; color: var(--muted); padding: 4px 2px; font-size: 11px; font-weight: 700; display: grid; justify-items: center; gap: 1px; border-radius: 10px; position: relative; }
+.dock button .ic { font-size: 20px; line-height: 1.2; }
+.dock button .badge { position: absolute; top: 0; right: 22%; background: var(--gold); color: var(--ink); font-size: 10px; border-radius: 8px; padding: 0 5px; }
+.dock button:active { background: #ffffff12; }
+.chipsel { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 5px; }
+.chipsel button { padding: 8px 0; font-weight: 800; font-size: 13px; border-radius: 999px; background: #ffffff12; border: 1px solid #ffffff1f; }
+.chipsel button.on { background: var(--gold); color: var(--ink); }
+.timer { font-variant-numeric: tabular-nums; color: var(--gold); }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
 </style>
 
@@ -282,7 +325,7 @@ details { color: var(--muted); } details p { color: var(--fg); line-height: 1.5;
   <div id="topbar" hidden></div>
   <div id="boardWrap" hidden>
     <div id="dice"></div>
-    <button id="viewBtn" type="button">Вид сверху</button>
+    <button id="viewBtn" type="button" aria-label="Сменить вид">🎥</button>
     <div id="boardHint"><span id="hintText"></span></div>
     <div id="banner" hidden></div>
     <div id="roulette" hidden><div class="rw"><canvas width="600" height="600"></canvas><div class="ball"></div><div class="ptr">🔻</div></div></div>
@@ -1166,25 +1209,35 @@ function cellRect(i) {
 }
 const cellCenter = (i) => { const r = cellRect(i); return { x: r.x + r.w / 2 - B3 / 2, z: r.z + r.h / 2 - B3 / 2 }; };
 
-const T3 = { ok: false, busy: false, tokens: {}, animPos: {}, view: 'top' };
+const T3 = { ok: false, busy: false, tokens: {}, animPos: {}, view: 'top', dirty: true, offY: 0, offTarget: 0 };
 function setupBoard() {
   if (!window.THREE) { $('#viewBtn').hidden = true; return; }
   const wrap = $('#boardWrap');
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(Math.min(2.5, window.devicePixelRatio || 1));
   renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.15;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   wrap.prepend(renderer.domElement);
   const scene = new THREE.Scene();
   scene.background = new THREE.Color('#0a0f18');
   const camera = new THREE.PerspectiveCamera(40, 1, 0.05, 100);
   scene.add(new THREE.HemisphereLight(0xffffff, 0x334455, 0.85));
-  const sun = new THREE.DirectionalLight(0xffffff, 0.7);
+  const sun = new THREE.DirectionalLight(0xfff4e0, 0.95);
   sun.position.set(4, 10, 6);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  Object.assign(sun.shadow.camera, { left: -6.5, right: 6.5, top: 6.5, bottom: -6.5, near: 1, far: 30 });
+  sun.shadow.bias = -0.0008;
+  sun.shadow.radius = 3;
   scene.add(sun);
 
   // Поле: коробка, сверху — нарисованная текстура
   const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = 2048;
+  // чёткость поля: 3072 px, если видеокарта позволяет
+  canvas.width = canvas.height = renderer.capabilities.maxTextureSize >= 4096 ? 3072 : 2048;
   const tex = new THREE.CanvasTexture(canvas);
   tex.encoding = THREE.sRGBEncoding;
   tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
@@ -1192,8 +1245,9 @@ function setupBoard() {
   const top = new THREE.MeshStandardMaterial({ map: tex, roughness: .9 });
   const board = new THREE.Mesh(new THREE.BoxGeometry(B3, 0.2, B3), [side, side, top, side, side, side]);
   board.position.y = -0.1;
+  board.receiveShadow = true;
   scene.add(board);
-  const table = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.MeshStandardMaterial({ color: '#13202f', roughness: 1 }));
+  const table = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.MeshBasicMaterial({ color: '#0b111c' }));
   table.rotation.x = -Math.PI / 2; table.position.y = -0.21;
   scene.add(table);
   drawBoardTexture(canvas); tex.needsUpdate = true;
@@ -1204,15 +1258,13 @@ function setupBoard() {
     [0, 0], [0.2, 0], [0.21, 0.04], [0.15, 0.08], [0.1, 0.13], [0.075, 0.3], [0.12, 0.33], [0.06, 0.36], [0, 0.36],
   ].map(([x, y]) => new THREE.Vector2(x, y)), 24);
   const headGeo = new THREE.SphereGeometry(0.1, 20, 14);
-  const shadowGeo = new THREE.CircleGeometry(0.2, 20);
-  const shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.28 });
   for (const n of PLAYERS) {
     const g = new THREE.Group();
     const mat = new THREE.MeshStandardMaterial({ color: PCOLORS[n], roughness: 0.35, metalness: 0.15 });
     const body = new THREE.Mesh(pawnGeo, mat);
     const head = new THREE.Mesh(headGeo, mat); head.position.y = 0.43;
-    const sh = new THREE.Mesh(shadowGeo, shadowMat); sh.rotation.x = -Math.PI / 2; sh.position.y = 0.005;
-    g.add(sh, body, head);
+    body.castShadow = true; head.castShadow = true;
+    g.add(body, head);
     g.visible = false;
     scene.add(g);
     T3.tokens[n] = g;
@@ -1225,10 +1277,18 @@ function setupBoard() {
     const w = wrap.clientWidth, h = wrap.clientHeight;
     if (!w || !h) return;
     renderer.setSize(w, h, false);
-    camera.aspect = w / h; camera.updateProjectionMatrix();
+    camera.aspect = w / h;
+    T3.offY = T3.offTarget = viewShift();
+    camera.setViewOffset(w, h, 0, T3.offY, w, h);
+    camera.updateProjectionMatrix();
     if (!T3.busy) setCam(topCam());
+    T3.dirty = true;
   };
   new ResizeObserver(resize).observe(wrap);
+  // поле сдвигается в свободную область между игроками и панелью
+  const onPanel = () => { T3.offTarget = viewShift(); if (!T3.busy && camState) animCam(topCam(), 350); T3.dirty = true; };
+  new ResizeObserver(onPanel).observe($('#main'));
+  new ResizeObserver(onPanel).observe($('#topbar'));
   resize();
 
   // Нажатие на клетку — карточка
@@ -1244,9 +1304,17 @@ function setupBoard() {
     const x = hit.point.x + B3 / 2, z = hit.point.z + B3 / 2;
     for (let i = 0; i < 40; i++) { const c = cellRect(i); if (x >= c.x && x <= c.x + c.w && z >= c.z && z <= c.z + c.h) { openCell(i); break; } }
   });
-  $('#viewBtn').onclick = () => { if (!T3.busy) { T3.view = T3.view === 'top' ? 'tilt' : 'top'; animCam(topCam(), 600); $('#viewBtn').textContent = T3.view === 'top' ? 'Вид сверху' : 'Вид под углом'; } };
+  $('#viewBtn').onclick = () => actions.toggleView();
 
-  const loop = () => { renderer.render(scene, camera); requestAnimationFrame(loop); };
+  const loop = () => {
+    if (Math.abs(T3.offTarget - T3.offY) > 0.5) {
+      T3.offY += (T3.offTarget - T3.offY) * 0.35;
+      camera.setViewOffset(wrap.clientWidth, wrap.clientHeight, 0, T3.offY, wrap.clientWidth, wrap.clientHeight);
+      T3.dirty = true;
+    }
+    if (T3.dirty) { renderer.render(scene, camera); T3.dirty = false; }
+    requestAnimationFrame(loop);
+  };
   loop();
 }
 
@@ -1257,7 +1325,8 @@ function wrapText(ctx, text, maxW) {
   return lines.slice(0, 3);
 }
 function drawBoardTexture(cv) {
-  const ctx = cv.getContext('2d'), S = cv.width, k = S / B3;
+  const ctx = cv.getContext('2d'), S = 2048, k = S / B3;
+  ctx.setTransform(cv.width / S, 0, 0, cv.width / S, 0, 0);
   const EMOJI = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
   ctx.fillStyle = '#e9f1e4'; ctx.fillRect(0, 0, S, S);
   // центр
@@ -1325,10 +1394,16 @@ function drawBoardTexture(cv) {
 
 const tokOffset = (n) => { const i = PLAYERS.indexOf(n); return { x: (i % 2 ? 0.17 : -0.17), z: (i < 2 ? -0.17 : 0.17) }; };
 function tokenSpot(n, i) { const c = cellCenter(i), o = tokOffset(n); return new THREE.Vector3(c.x + o.x * 1.1, 0, c.z + o.z * 1.1); }
+function insets() {
+  if (!document.body.classList.contains('ingame')) return { top: 0, bottom: 0 };
+  return { top: $('#topbar').offsetHeight || 0, bottom: $('#main').offsetHeight || 0 };
+}
 function topCam() {
-  const cam = T3.camera, fov = cam.fov * Math.PI / 180, need = B3 * 0.56;
-  const fit = Math.max(need, need / cam.aspect);
-  const d = fit / Math.tan(fov / 2);
+  const cam = T3.camera, fov = cam.fov * Math.PI / 180;
+  const w = T3.wrap.clientWidth || 1, h = T3.wrap.clientHeight || 1, ins = insets();
+  const visH = Math.max(120, h - ins.top - ins.bottom);
+  const px = Math.min(w, visH) / (B3 * 1.04);
+  const d = h / (2 * Math.tan(fov / 2) * px);
   if (T3.view === 'tilt') return { pos: new THREE.Vector3(0, d * 0.82, d * 0.62), look: new THREE.Vector3(0, 0, 0.35) };
   return { pos: new THREE.Vector3(0, d, 0.001), look: new THREE.Vector3(0, 0, 0) };
 }
@@ -1341,12 +1416,13 @@ function behindCam(pos, f) {
   return { pos: pos.clone().addScaledVector(f, -1.55).add(new THREE.Vector3(0, 0.95, 0)), look: pos.clone().addScaledVector(f, 1.6).add(new THREE.Vector3(0, 0.15, 0)) };
 }
 let camState = null;
-function setCam(c) { camState = { pos: c.pos.clone(), look: c.look.clone() }; T3.camera.position.copy(c.pos); T3.camera.lookAt(c.look); }
+function setCam(c) { camState = { pos: c.pos.clone(), look: c.look.clone() }; T3.camera.position.copy(c.pos); T3.camera.lookAt(c.look); T3.dirty = true; }
+function viewShift() { const i = insets(); return (i.bottom - i.top) / 2; }
 const ease = (t) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
 function tween(ms, fn) {
   return new Promise((res) => {
     const t0 = performance.now();
-    const step = (t) => { const k = Math.min(1, (t - t0) / ms); fn(k); if (k < 1) requestAnimationFrame(step); else res(); };
+    const step = (t) => { const k = Math.min(1, (t - t0) / ms); fn(k); T3.dirty = true; if (k < 1) requestAnimationFrame(step); else res(); };
     requestAnimationFrame(step);
   });
 }
@@ -1536,8 +1612,11 @@ function flashChip(n, plus) {
 // Меняем показываемые деньги по ходу анимаций, чтобы цифры совпадали с тем, что видно
 function shownMoney(n, d) { const a = app.shownP?.pl?.[n]; if (a) a[0] += d; renderTop(view()); }
 
+const EV_TEXT = { dice: 'бросает кубики…', move: 'ходит…', card: 'тянет карточку…', roulette: 'играет в казино…', buy: 'покупает улицу', pay: 'платит', gain: 'получает деньги', jail: 'едет в тюрьму…' };
 async function playEvent(e) {
   const S = app.shownP;
+  const who = e.who || e.from;
+  if (who) { EVQ.actor = who; EVQ.what = EV_TEXT[e.k] ? `${esc(who)} ${EV_TEXT[e.k]}` : null; renderPanel(true); }
   switch (e.k) {
     case 'dice': if (T3.ok) await playDice(e); break;
     case 'move':
@@ -1569,10 +1648,11 @@ async function drainEvents() {
   while (EVQ.q.length) {
     try { await playEvent(EVQ.q.shift()); } catch (err) { console.error(err); }
   }
-  EVQ.busy = false; T3.busy = false;
+  EVQ.busy = false; T3.busy = false; EVQ.actor = null; EVQ.what = null;
   T3.animPos = {};
   app.shownP = null;
   setBanner('');
+  renderDice(null);
   render(true);
   const V = view(), me = myName();
   if (V && V.ph === 'play' && V.cur === me && V.step === 'roll') { navigator.vibrate?.([80, 60, 80]); sfx.turn(); }
@@ -1585,10 +1665,11 @@ function placeTokens() {
     t.visible = V.ph !== 'lobby' && V.order.includes(n) && !p.out;
     if (!T3.busy) t.position.copy(tokenSpot(n, T3.animPos[n] ?? p.pos));
   }
+  T3.dirty = true;
   // дома, отели и владельцы
   T3.extras.clear();
   const houseGeo = new THREE.BoxGeometry(0.13, 0.12, 0.13), hotelGeo = new THREE.BoxGeometry(0.34, 0.16, 0.16);
-  const houseMat = new THREE.MeshStandardMaterial({ color: '#1f9d4a' }), hotelMat = new THREE.MeshStandardMaterial({ color: '#d32f2f' });
+  const houseMat = new THREE.MeshStandardMaterial({ color: '#1f9d4a', roughness: .5 }), hotelMat = new THREE.MeshStandardMaterial({ color: '#d32f2f', roughness: .5 });
   for (const c in V.own) {
     const o = V.own[c], r = cellRect(+c), ctr = cellCenter(+c);
     const along = r.side % 2 === 0 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 0, 1);
@@ -1600,8 +1681,8 @@ function placeTokens() {
       new THREE.MeshBasicMaterial({ color: PCOLORS[o.o], transparent: true, opacity: o.m ? 0.3 : 1 }));
     stripe.rotation.x = -Math.PI / 2; stripe.position.copy(outer);
     T3.extras.add(stripe);
-    if (o.h === 5) { const m = new THREE.Mesh(hotelGeo, hotelMat); m.position.copy(bandC).setY(0.08); if (r.side % 2) m.rotation.y = Math.PI / 2; T3.extras.add(m); }
-    else for (let j = 0; j < o.h; j++) { const m = new THREE.Mesh(houseGeo, houseMat); m.position.copy(bandC).addScaledVector(along, (j - (o.h - 1) / 2) * 0.17).setY(0.06); T3.extras.add(m); }
+    if (o.h === 5) { const m = new THREE.Mesh(hotelGeo, hotelMat); m.castShadow = true; m.position.copy(bandC).setY(0.08); if (r.side % 2) m.rotation.y = Math.PI / 2; T3.extras.add(m); }
+    else for (let j = 0; j < o.h; j++) { const m = new THREE.Mesh(houseGeo, houseMat); m.castShadow = true; m.position.copy(bandC).addScaledVector(along, (j - (o.h - 1) / 2) * 0.17).setY(0.06); T3.extras.add(m); }
   }
 }
 function setHint(t) { $('#hintText').textContent = t; $('#boardHint').hidden = !t; }
@@ -1623,7 +1704,7 @@ function stateArrived() {
     }
   }
   app.prevP = P;
-  if (!EVQ.busy) { renderDice(view(), false); }
+  if (!EVQ.busy) renderDice(null);
   render();
 }
 function renderDice(V, anim) {
@@ -1635,10 +1716,11 @@ function render(force) {
   const V = view();
   renderTop(V);
   const inGame = V && V.ph !== 'lobby' && (myName() || app.mode === 'host');
+  document.body.classList.toggle('ingame', !!inGame);
   $('#boardWrap').hidden = !inGame || !T3.ok && !window.THREE;
   if (inGame && !T3.ok && window.THREE) setupBoard();
   if (T3.ok) placeTokens();
-  if (inGame && !T3.busy) setHint(V.ph === 'over' ? 'Игра окончена' : `Ход: ${V.cur} · ${CELLS[V.pl[V.cur].pos].n}`);
+  if (inGame && !T3.busy) setHint('');
   renderPanel(force);
   if (app.sheet) renderSheet();
 }
@@ -1652,9 +1734,8 @@ function renderTop(V) {
     return `<button class="chip ${n === V.cur && V.ph === 'play' ? 'turn' : ''} ${p.out ? 'out' : ''} ${!p.on && !p.out ? 'off' : ''}" data-pl="${esc(n)}">
       <div class="n"><span class="dot" style="background:${PCOLORS[n]}"></span>${esc(n)}${n === me ? ' (ты)' : ''}</div>
       <div class="m">${eur(p.money)}</div></button>`;
-  }).join('') + '<button id="menuBtn" aria-label="Меню">⋯</button>';
+  }).join('');
   bar.querySelectorAll('[data-pl]').forEach((b) => b.onclick = () => openSheet({ k: 'player', n: b.dataset.pl }));
-  $('#menuBtn').onclick = () => openSheet({ k: 'menu' });
 }
 
 function renderPanel(force) {
@@ -1666,7 +1747,7 @@ function renderPanel(force) {
     const me = myName();
     const rq = app.mode === 'host' && V.rq?.length ? V.rq : null;
     const pending = app.mode === 'client' && V.rq?.some((r) => r[1] === app.myPeer);
-    key = JSON.stringify([V.ph, V.step, V.turn, V.offer, V.auc, V.debts, V.trade, V.card?.id, V.log.length, V.own, me, rq, pending, T3.busy, app.tab, PLAYERS.map((n) => [V.pl[n].money, V.pl[n].jc, V.pl[n].on, V.pl[n].joined, V.pl[n].jail])]);
+    key = JSON.stringify([V.ph, V.step, V.turn, V.offer, V.auc, V.debts, V.trade, V.card?.id, V.own, me, rq, pending, T3.busy, app.casinoAmt, PLAYERS.map((n) => [V.pl[n].money, V.pl[n].jc, V.pl[n].on, V.pl[n].joined, V.pl[n].jail])]);
     html = (rq ? requestsHtml(rq) : '') + (pending ? viewPending() : !me && app.mode === 'client' || V.ph === 'lobby' && !me ? viewChoose(V) : V.ph === 'lobby' ? viewLobby(V) : viewGame(V, me));
   }
   if (!force && key === app.viewKey) return;
@@ -1742,75 +1823,69 @@ function cardBox(card) {
   const list = card.deck === 'luck' ? LUCK : BANK;
   return `<div class="cardbox ${card.deck}"><div class="deck">${card.deck === 'luck' ? '🍀 УДАЧА' : '🏦 БАНК'} · ${esc(card.who)}</div><div>${esc(list[card.i].x)}</div></div>`;
 }
+function dockHtml(V, me) {
+  const mine = me ? Object.values(V.own).filter((o) => o.o === me).length : 0;
+  return `<div class="dock">
+    <button data-sh="mine"><span class="ic">🏠</span>Мои улицы${mine ? `<span class="badge">${mine}</span>` : ''}</button>
+    <button data-sh="trade" ${!me || V.pl[me]?.out || V.ph !== 'play' ? 'disabled' : ''}><span class="ic">🤝</span>Сделка</button>
+    <button data-sh="log"><span class="ic">📜</span>Журнал</button>
+    <button data-sh="menu"><span class="ic">⚙️</span>Меню</button></div>`;
+}
+const pline = (n, text) => `<div class="line"><span class="pdot" style="background:${PCOLORS[n]}"></span><span>${text}</span></div>`;
+function offerRow(c, extra) {
+  const cell = CELLS[c], col = cell.t === 'prop' ? GROUPS[cell.g].c : '#607d8b';
+  const rentTxt = cell.t === 'prop' ? `аренда от ${eur(rentTable(cell.p)[0])}` : cell.t === 'rail' ? 'аренда 25–200 €' : 'кубики × 4 или × 10';
+  return `<button class="offer" data-cell="${c}"><span class="band" style="background:${col}"></span><span class="em">${cell.e}</span>
+    <span class="nm">${esc(cell.n)}<br><span class="sm">${extra || rentTxt} · подробнее ›</span></span><span class="pr">${eur(cell.p)}</span></button>`;
+}
 function viewGame(V, me) {
   const isMe = V.cur === me, cp = V.pl[V.cur];
-  const parts = [];
+  const a = [];
   if (V.ph === 'over') {
-    parts.push(`<div class="logo">ИТОГИ</div><div class="stack">${V.rank.map(([n, w, out], i) => `<div class="panel" style="grid-template-columns:auto 1fr auto;align-items:center"><span>${i === 0 ? '🏆' : i + 1 + '.'}</span><b>${esc(n)}</b><span class="money">${out ? 'банкрот' : 'состояние ' + eur(w)}</span></div>`).join('')}</div>
-      ${app.mode === 'host' ? '<button class="btn" data-a="newGame">Новая игра</button>' : ''}`);
-    return parts.join('');
+    a.push(`<div class="logo" style="font-size:28px;margin:0">ИТОГИ</div><div class="stack">${V.rank.map(([n, w, out], i) => `<div class="panel" style="grid-template-columns:auto 1fr auto;align-items:center;padding:10px"><span>${i === 0 ? '🏆' : i + 1 + '.'}</span><b style="color:${PCOLORS[n]}">${esc(n)}</b><span class="money">${out ? 'банкрот' : eur(w)}</span></div>`).join('')}</div>
+      ${app.mode === 'host' ? '<button class="mega gold" data-a="newGame">Новая игра</button>' : ''}`);
+    return `<div class="act">${a.join('')}</div>${dockHtml(V, me)}`;
   }
-  if (T3.busy) parts.push(`<div class="panel"><p class="status">🎲 ${esc(V.cur)} ходит…</p></div>`);
+  if (T3.busy) { const who = EVQ.actor || V.cur; a.push(pline(who, EVQ.what || `${esc(who)} ходит…`)); }
   else {
-    // входящая сделка
-    if (V.trade && V.trade.to === me) parts.push(tradeOfferHtml(V, true));
-    else if (V.trade && V.trade.from === me) parts.push(`<div class="panel"><p class="status">Ждём ответа на сделку от ${esc(V.trade.to)}…</p><button class="btn sec" data-a="tradeCancel">Отменить сделку</button></div>`);
-    if (V.card) parts.push(cardBox(V.card));
+    if (V.trade && V.trade.to === me) a.push(tradeOfferHtml(V, true));
+    else if (V.trade && V.trade.from === me) a.push(`<div class="line">🤝 Ждём ответа от ${esc(V.trade.to)}…</div><button class="glass" style="padding:10px" data-a="tradeCancel">Отменить сделку</button>`);
     if (V.step === 'debt') {
       const d = V.debts[0], p = V.pl[d.who];
-      if (d.who === me) parts.push(`<div class="panel"><p class="status">Нужно заплатить ${eur(d.amt)} ${d.to ? 'игроку ' + esc(d.to) : 'банку'}</p>
-        <p class="note">У тебя ${eur(p.money)}. Продай дома или заложи улицы во вкладке «Мои улицы», либо предложи сделку.</p>
-        <button class="btn good" data-a="payDebt" ${p.money >= d.amt ? '' : 'disabled'}>Оплатить ${eur(d.amt)}</button>
-        <button class="btn bad" data-a="bankrupt" id="bkBtn">Объявить банкротство</button></div>`);
-      else parts.push(`<div class="panel"><p class="status">${esc(d.who)} ищет ${eur(d.amt)}, чтобы заплатить ${d.to ? esc(d.to) : 'банку'}…</p></div>`);
+      if (d.who === me) a.push(`<div class="line" style="color:#ff9a9e">💸 Нужно ${eur(d.amt)} ${d.to ? '→ ' + esc(d.to) : 'банку'} · у тебя ${eur(p.money)}</div>
+        <p class="note" style="text-align:center;margin:0">Продай дома или заложи улицы в «Мои улицы», либо предложи сделку.</p>
+        <div class="row3"><button class="gold" data-a="payDebt" ${p.money >= d.amt ? '' : 'disabled'}>Оплатить</button><button class="glass" data-sh="mine">Мои улицы</button><button class="btn bad" style="padding:13px 4px;font-size:14px" data-a="bankrupt">Банкрот</button></div>`);
+      else a.push(pline(d.who, `${esc(d.who)} ищет ${eur(d.amt)}…`));
     } else if (V.step === 'auction' && V.auc) {
-      const a = V.auc, myMoney = me ? V.pl[me].money : 0, canBid = me && V.order.includes(me) && !V.pl[me].out;
-      parts.push(`<div class="panel"><p class="status">🔨 Аукцион: ${esc(CELLS[a.c].n)}</p>
-        <div class="big">${a.by ? eur(a.bid) + ' · ' + esc(a.by) : 'ставок нет'}</div>
-        <p class="note" style="text-align:center">Осталось <span data-secs>${secsLeft(a.dl)}</span> с · цена улицы ${eur(CELLS[a.c].p)}</p>
-        ${canBid ? `<div class="bidrow">${[10, 50, 100].map((s) => `<button data-bid="${a.bid + s}" ${a.bid + s > myMoney || a.by === me ? 'disabled' : ''}>+${s}</button>`).join('')}</div>
-        <div class="two" style="grid-template-columns:1fr auto"><input id="bidIn" type="number" inputmode="numeric" placeholder="Своя ставка"><button class="btn sec" style="width:auto;padding:0 16px" data-a="bid">Ставлю</button></div>
-        <p class="note">У тебя ${eur(myMoney)}</p>` : ''}
-        <button class="btn ghost" data-cell="${a.c}">Карточка улицы</button></div>`);
+      const au = V.auc, myMoney = me ? V.pl[me].money : 0, canBid = me && V.order.includes(me) && !V.pl[me].out;
+      a.push(`<div class="line">🔨 Аукцион · <span class="timer"><span data-secs>${secsLeft(au.dl)}</span> с</span></div>
+        ${offerRow(au.c, au.by ? `ставка ${eur(au.bid)} · ${esc(au.by)}` : 'ставок пока нет')}
+        ${canBid ? `<div class="rowN">${[10, 50, 100].map((st) => `<button class="${st === 10 ? 'gold' : 'glass'}" data-bid="${au.bid + st}" ${au.bid + st > myMoney || au.by === me ? 'disabled' : ''}>+${st} → ${au.bid + st}</button>`).join('')}</div>` : ''}`);
     } else if (V.step === 'buy' && V.offer != null) {
       const c = V.offer;
-      parts.push(`<div class="panel">${propCardHtml(V, c, false)}
-        ${isMe ? `<button class="btn good" data-a="buy" ${cp.money >= CELLS[c].p ? '' : 'disabled'}>Купить за ${eur(CELLS[c].p)}</button>
-          <div class="two"><button class="btn sec" data-a="decline">🔨 На аукцион</button><button class="btn ghost" data-a="pass">Не покупать</button></div>
-          ${cp.money < CELLS[c].p ? '<p class="note">Не хватает денег — можно заложить улицу или отправить на аукцион.</p>' : ''}`
-        : `<p class="status">${esc(V.cur)} решает, покупать ли…</p>`}</div>`);
+      a.push(offerRow(c));
+      if (isMe) a.push(`<div class="row3"><button class="gold" data-a="buy" ${cp.money >= CELLS[c].p ? '' : 'disabled'}>Купить</button><button class="glass" data-a="decline">🔨 Аукцион</button><button class="glass" data-a="pass">Не надо</button></div>`);
+      else a.push(pline(V.cur, `${esc(V.cur)} решает, покупать ли…`));
     } else if (V.step === 'casino') {
       if (isMe) {
         const max = Math.min(CASINO_MAX, cp.money), sel = Math.min(app.casinoAmt || 50, max);
-        parts.push(`<div class="panel casino"><p class="status">🎰 Казино! Сделаешь ставку?</p>
-          ${max >= CASINO_MIN ? `<div class="bidrow">${[10, 50, 100, 200, 500].filter((v) => v <= max).map((v) => `<button data-camt="${v}" class="${v === sel ? 'on' : ''}">${v} €</button>`).join('')}</div>
-          <div class="big">${sel} €</div>
-          <div class="bidrow">
-            <button class="red" data-con="red">🔴 Красное<br><small>×2</small></button>
-            <button class="black" data-con="black">⚫ Чёрное<br><small>×2</small></button>
-            <button class="zero" data-con="zero">🟢 Зеро<br><small>×36</small></button>
-          </div>` : '<p class="note">Денег на ставку не хватает.</p>'}
-          <button class="btn ghost" data-a="casinoSkip">Уйти из казино</button></div>`);
-      } else parts.push(`<div class="panel"><p class="status">🎰 ${esc(V.cur)} в казино, думает о ставке…</p></div>`);
+        a.push(`<div class="line">🎰 Казино · ставка <span class="timer">${sel} €</span></div>
+          ${max >= CASINO_MIN ? `<div class="chipsel">${[10, 50, 100, 200, 500].filter((v) => v <= max).map((v) => `<button data-camt="${v}" class="${v === sel ? 'on' : ''}">${v}</button>`).join('')}</div>
+          <div class="rowN casino"><button class="red" style="background:#c62828;color:#fff" data-con="red">🔴 ×2</button><button style="background:#111;color:#fff;border:1px solid #fff3" data-con="black">⚫ ×2</button><button style="background:#1b7a3d;color:#fff" data-con="zero">🟢 ×36</button><button class="glass" data-a="casinoSkip">Уйти</button></div>`
+          : '<button class="glass" style="padding:12px" data-a="casinoSkip">Денег нет — уйти</button>'}`);
+      } else a.push(pline(V.cur, `🎰 ${esc(V.cur)} в казино…`));
     } else if (V.step === 'roll') {
       if (isMe) {
-        if (cp.jail) parts.push(`<div class="panel"><p class="status">🚔 Ты в тюрьме (попытка ${cp.jt + 1} из 3)</p>
-          <button class="btn" data-a="roll">Бросить на дубль</button>
-          <div class="two"><button class="btn sec" data-a="payJail" ${cp.money >= 50 ? '' : 'disabled'}>Заплатить 50 €</button><button class="btn sec" data-a="jailCard" ${cp.jc ? '' : 'disabled'}>Карта выхода (${cp.jc})</button></div></div>`);
-        else parts.push(`<div class="panel"><p class="status">${V.dbl ? 'Дубль! Бросай ещё раз' : 'Твой ход!'}</p><button class="btn" data-a="roll">🎲 Бросить кубики</button></div>`);
-      } else parts.push(`<div class="panel"><p class="status">Ход: ${esc(V.cur)}${cp.jail ? ' (в тюрьме)' : ''}</p>${!cp.on && app.mode === 'host' ? '<button class="btn sec" data-a="skip">Пропустить ход (нет связи)</button>' : ''}</div>`);
+        if (cp.jail) a.push(`<div class="line">🚔 Ты в тюрьме · попытка ${cp.jt + 1} из 3</div>
+          <div class="row3"><button class="gold" data-a="roll">🎲 На дубль</button><button class="glass" data-a="payJail" ${cp.money >= 50 ? '' : 'disabled'}>50 €</button><button class="glass" data-a="jailCard" ${cp.jc ? '' : 'disabled'}>Карта (${cp.jc})</button></div>`);
+        else a.push(`<button class="mega gold" data-a="roll">🎲 ${V.dbl ? 'Дубль! Бросай ещё' : 'Бросить кубики'}</button>`);
+      } else a.push(pline(V.cur, `Ход: ${esc(V.cur)}${cp.jail ? ' · в тюрьме' : ''}`) + (!cp.on && app.mode === 'host' ? '<button class="glass" style="padding:10px" data-a="skip">Пропустить ход (нет связи)</button>' : ''));
     } else if (V.step === 'end') {
-      if (isMe) parts.push(`<div class="panel"><p class="note" style="text-align:center">Можно построить дома, заложить улицы или предложить сделку.</p><button class="btn" data-a="end">Завершить ход</button></div>`);
-      else parts.push(`<div class="panel"><p class="status">${esc(V.cur)} завершает ход…</p>${!cp.on && app.mode === 'host' ? '<button class="btn sec" data-a="skip">Пропустить ход (нет связи)</button>' : ''}</div>`);
+      if (isMe) a.push(`<div class="rowN"><button class="glass" data-sh="mine">🏗️ Строить</button><button class="gold" style="grid-column: span 2" data-a="end">Завершить ход ➜</button></div>`);
+      else a.push(pline(V.cur, `${esc(V.cur)} завершает ход…`) + (!cp.on && app.mode === 'host' ? '<button class="glass" style="padding:10px" data-a="skip">Пропустить ход (нет связи)</button>' : ''));
     }
   }
-  // вкладки
-  parts.push(`<div class="tabs"><button class="${app.tab === 'cards' ? 'on' : ''}" data-tab="cards">Мои улицы</button><button class="${app.tab === 'trade' ? 'on' : ''}" data-tab="trade">Сделка</button><button class="${app.tab === 'log' ? 'on' : ''}" data-tab="log">Журнал</button></div>`);
-  if (app.tab === 'cards') parts.push(propListHtml(V, me));
-  if (app.tab === 'trade') parts.push(me && !V.pl[me].out ? `<div class="panel"><p class="note">Обменивайся улицами, деньгами и картами выхода из тюрьмы. Улицы с домами в группе обменивать нельзя.</p>
-      <button class="btn" data-a="newTrade" ${V.trade ? 'disabled' : ''}>Предложить сделку</button></div>` : '<p class="sub">Сделки недоступны</p>');
-  if (app.tab === 'log') parts.push(`<div class="panel log">${V.log.map((l) => `<div>${esc(l)}</div>`).join('')}</div>`);
-  return parts.join('');
+  return `<div class="act">${a.join('')}</div>${dockHtml(V, me)}`;
 }
 function secsLeft(dl) { return Math.max(0, Math.ceil((dl - (Date.now() + app.offset)) / 1000)); }
 setInterval(() => { const V = view(); if (V?.auc) document.querySelectorAll('[data-secs]').forEach((e) => { e.textContent = secsLeft(V.auc.dl); }); }, 250);
@@ -1891,10 +1966,18 @@ function renderSheet() {
     const cells = Object.keys(V.own).map(Number).filter((c) => V.own[c].o === n).sort((a, b) => a - b);
     html += `<h2 style="color:${PCOLORS[n]}">${esc(n)}</h2><p class="sub">${eur(p.money)} · состояние ${eur(R.worth(V.s, n))}${p.jail ? ' · в тюрьме' : ''}${p.jc ? ' · карт выхода: ' + p.jc : ''}</p>
       <div class="plist">${cells.map((c) => `<button class="pitem" data-cell="${c}"><span class="bar" style="background:${CELLS[c].t === 'prop' ? GROUPS[CELLS[c].g].c : '#94a3b8'}"></span><span class="nm">${CELLS[c].e} ${esc(CELLS[c].n)}${V.own[c].m ? '<span class="tag">в залоге</span>' : ''}</span><span>${V.own[c].h === 5 ? '🏨' : '🏠'.repeat(V.own[c].h)}</span></button>`).join('') || '<p class="sub">Улиц нет</p>'}</div>`;
+  } else if (s.k === 'mine' && V) {
+    const me = myName();
+    html += `<h2>Мои улицы</h2>${me ? `<p class="sub">${eur(V.pl[me].money)} · состояние ${eur(R.worth(V.s, me))}</p>` : ''}${propListHtml(V, me)}
+      <p class="note">Нажми на улицу, чтобы построить дом, продать его или заложить.</p>`;
+  } else if (s.k === 'log' && V) {
+    html += `<h2>Журнал</h2><div class="log">${V.log.slice().reverse().map((l) => `<div>${esc(l)}</div>`).join('')}</div>`;
   } else if (s.k === 'menu') {
     html += `<h2>Меню</h2>${app.code ? `<p class="sub">Игра ${esc(app.code)}${myName() ? ' · ты: ' + esc(myName()) : ''}</p>` : ''}
       ${app.mode === 'host' && V?.ph === 'play' ? '<button class="btn sec" data-a="hostEnd" id="hostEndBtn">Закончить игру и посчитать богатство</button>' : ''}
       ${app.mode === 'host' && V?.ph === 'play' ? `<div class="panel">${inviteHtml()}</div>` : ''}
+      ${T3.ok ? `<button class="btn sec" data-a="toggleView">🎥 ${T3.view === 'top' ? 'Вид под углом' : 'Вид сверху'}</button>` : ''}
+      ${rulesHtml()}
       <button class="btn ghost" data-a="exit">Выйти в главное меню</button>`;
   } else if (s.k === 'trade' && V) {
     const me = myName(), others = V.order.filter((n) => n !== me && !V.pl[n].out);
@@ -1952,13 +2035,14 @@ const actions = {
   tradeNo: () => act('tradeNo'),
   tradeCancel: () => act('tradeCancel'),
   newTrade: () => openSheet({ k: 'trade', gc: [], rc: [] }),
+  toggleView: () => { if (T3.busy) return; T3.view = T3.view === 'top' ? 'tilt' : 'top'; animCam(topCam(), 600); closeSheet(); },
   hostEnd: (b) => confirmTwice('he', b, 'Точно закончить? Нажми ещё раз', () => { act('hostEnd'); closeSheet(); }),
   newGame: () => act('newGame'),
   sendTrade: () => {
     const s = app.sheet;
     const num = (id) => Number($('#' + id)?.value || 0);
     act('propose', { to: s.to, gc: s.gc || [], rc: s.rc || [], gm: num('tgm'), rm: num('trm'), gj: num('tgj'), rj: num('trj') });
-    closeSheet(); app.tab = 'cards'; toast('Предложение отправлено');
+    closeSheet(); toast('Предложение отправлено');
   },
 };
 function bindCommon(root) {
@@ -1971,7 +2055,7 @@ function bindMain() {
   m.querySelectorAll('[data-join]').forEach((b) => b.onclick = () => { app.me = b.dataset.join; if (app.mode === 'client') { store.set('client', { code: app.code, me: app.me, at: Date.now() }); app.joinTried = true; } act('join', app.me); });
   m.querySelectorAll('[data-appr]').forEach((b) => b.onclick = () => act('approve', b.dataset.appr));
   m.querySelectorAll('[data-deny]').forEach((b) => b.onclick = () => act('deny', b.dataset.deny));
-  m.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => { app.tab = b.dataset.tab; renderPanel(true); });
+  m.querySelectorAll('[data-sh]').forEach((b) => b.onclick = () => { const k = b.dataset.sh; openSheet(k === 'trade' ? { k: 'trade', gc: [], rc: [] } : { k }); });
   m.querySelectorAll('[data-camt]').forEach((b) => b.onclick = () => { app.casinoAmt = Number(b.dataset.camt); renderPanel(true); });
   m.querySelectorAll('[data-con]').forEach((b) => b.onclick = () => { const V = view(); act('casinoBet', { amt: Math.min(app.casinoAmt || 50, CASINO_MAX, V.pl[myName()].money), on: b.dataset.con }); });
   m.querySelectorAll('[data-bid]').forEach((b) => b.onclick = () => act('bid', { v: Number(b.dataset.bid) }));
