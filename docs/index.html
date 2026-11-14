@@ -9,17 +9,26 @@
 <script>// Связь между телефонами для версии на GitHub Pages: тот же интерфейс, что у «комнат» claude.ai
 // (join → presence / onPeers / leave), но через публичный MQTT-брокер. Регистрация не нужна.
 (function () {
-  const BROKERS = window.MG_BROKERS || ['wss://broker.emqx.io:8084/mqtt', 'wss://broker.hivemq.com:8884/mqtt'];
+  // Первый — на обычном порту 443 (проходит через большинство сетей), остальные — запасные
+  const BROKERS = window.MG_BROKERS || [
+    { url: 'wss://public.cloud.shiftr.io', username: 'public', password: 'public' },
+    { url: 'wss://broker.emqx.io:8084/mqtt' },
+    { url: 'wss://broker.hivemq.com:8884/mqtt' },
+  ];
   const PREFIX = 'moyaigra-v1-k7q2/';
   const rid = () => Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6);
   const me = rid();
 
-  function connect(urls, opts) {
+  function connect(list, opts) {
     return new Promise((resolve, reject) => {
       let i = 0;
       const tryNext = () => {
-        if (i >= urls.length) return reject(new Error('no broker'));
-        const c = window.mqtt.connect(urls[i++], opts);
+        if (i >= list.length) return reject(new Error('no broker'));
+        const b = typeof list[i] === 'string' ? { url: list[i] } : list[i];
+        i += 1;
+        const o = { ...opts };
+        if (b.username) { o.username = b.username; o.password = b.password; }
+        const c = window.mqtt.connect(b.url, o);
         const t = setTimeout(() => { c.end(true); tryNext(); }, 7000);
         c.once('connect', () => { clearTimeout(t); resolve(c); });
       };
@@ -657,12 +666,19 @@ async function joinGameRoom(code) {
   return r;
 }
 
+function connecting(on) {
+  if (on) { viewKey = 'connecting'; main.innerHTML = '<div class="logo">МОЯ ИГРА</div><p class="status">Подключаемся…</p>'; }
+  else viewKey = '';
+}
+
 async function hostOnline(saved) {
   if (!app.room) return toast('Онлайн недоступен');
   const code = saved?.code || String(100000 + Math.floor(Math.random() * 900000));
+  connecting(true);
   app.mode = 'host';
   app.game = new Game(onGameChange, saved?.snap);
-  try { await joinGameRoom(code); } catch (e) { app.mode = null; return toast('Не удалось открыть комнату'); }
+  try { await joinGameRoom(code); } catch (e) { app.mode = null; app.game.clear(); app.game = null; app.P = null; connecting(false); render(true); return toast('Нет связи. Проверь интернет и попробуй ещё раз'); }
+  connecting(false);
   try { history.replaceState(null, '', '#g' + code); } catch (e) { /* без адреса */ }
   keepAwake();
   onGameChange();
@@ -675,7 +691,9 @@ async function joinOnline(code) {
   app.mode = 'client';
   app.P = null; app.hostSeen = false; app.joinTried = false;
   store.set('client', { code, me: app.me, at: Date.now() });
-  try { await joinGameRoom(code); } catch (e) { app.mode = null; return toast('Не удалось войти в комнату'); }
+  connecting(true);
+  try { await joinGameRoom(code); } catch (e) { app.mode = null; connecting(false); render(true); return toast('Нет связи. Проверь интернет и попробуй ещё раз'); }
+  connecting(false);
   keepAwake();
   render(true);
 }

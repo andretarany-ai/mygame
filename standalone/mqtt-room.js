@@ -1,17 +1,26 @@
 // Связь между телефонами для версии на GitHub Pages: тот же интерфейс, что у «комнат» claude.ai
 // (join → presence / onPeers / leave), но через публичный MQTT-брокер. Регистрация не нужна.
 (function () {
-  const BROKERS = window.MG_BROKERS || ['wss://broker.emqx.io:8084/mqtt', 'wss://broker.hivemq.com:8884/mqtt'];
+  // Первый — на обычном порту 443 (проходит через большинство сетей), остальные — запасные
+  const BROKERS = window.MG_BROKERS || [
+    { url: 'wss://public.cloud.shiftr.io', username: 'public', password: 'public' },
+    { url: 'wss://broker.emqx.io:8084/mqtt' },
+    { url: 'wss://broker.hivemq.com:8884/mqtt' },
+  ];
   const PREFIX = 'moyaigra-v1-k7q2/';
   const rid = () => Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6);
   const me = rid();
 
-  function connect(urls, opts) {
+  function connect(list, opts) {
     return new Promise((resolve, reject) => {
       let i = 0;
       const tryNext = () => {
-        if (i >= urls.length) return reject(new Error('no broker'));
-        const c = window.mqtt.connect(urls[i++], opts);
+        if (i >= list.length) return reject(new Error('no broker'));
+        const b = typeof list[i] === 'string' ? { url: list[i] } : list[i];
+        i += 1;
+        const o = { ...opts };
+        if (b.username) { o.username = b.username; o.password = b.password; }
+        const c = window.mqtt.connect(b.url, o);
         const t = setTimeout(() => { c.end(true); tryNext(); }, 7000);
         c.once('connect', () => { clearTimeout(t); resolve(c); });
       };

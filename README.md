@@ -39,7 +39,7 @@ npm start
 `standalone/mqtt-room.js` и `questions.js`:
 - `docs/index.html` — сайт для **GitHub Pages**. Вход по ссылке без регистрации: хост создаёт игру,
   отправляет ссылку, каждого вошедшего разрешает кнопкой. Телефоны связываются через публичный
-  MQTT-брокер (broker.emqx.io, запасной — broker.hivemq.com).
+  MQTT-брокер (public.cloud.shiftr.io на порту 443, запасные — broker.emqx.io и broker.hivemq.com).
 - `standalone/moya-igra.html` — та же игра для страницы claude.ai (там онлайн только для вошедших в аккаунт).
 
 ### Как включить GitHub Pages (можно с телефона, в браузере на github.com)

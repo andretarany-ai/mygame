@@ -537,12 +537,19 @@ async function joinGameRoom(code) {
   return r;
 }
 
+function connecting(on) {
+  if (on) { viewKey = 'connecting'; main.innerHTML = '<div class="logo">МОЯ ИГРА</div><p class="status">Подключаемся…</p>'; }
+  else viewKey = '';
+}
+
 async function hostOnline(saved) {
   if (!app.room) return toast('Онлайн недоступен');
   const code = saved?.code || String(100000 + Math.floor(Math.random() * 900000));
+  connecting(true);
   app.mode = 'host';
   app.game = new Game(onGameChange, saved?.snap);
-  try { await joinGameRoom(code); } catch (e) { app.mode = null; return toast('Не удалось открыть комнату'); }
+  try { await joinGameRoom(code); } catch (e) { app.mode = null; app.game.clear(); app.game = null; app.P = null; connecting(false); render(true); return toast('Нет связи. Проверь интернет и попробуй ещё раз'); }
+  connecting(false);
   try { history.replaceState(null, '', '#g' + code); } catch (e) { /* без адреса */ }
   keepAwake();
   onGameChange();
@@ -555,7 +562,9 @@ async function joinOnline(code) {
   app.mode = 'client';
   app.P = null; app.hostSeen = false; app.joinTried = false;
   store.set('client', { code, me: app.me, at: Date.now() });
-  try { await joinGameRoom(code); } catch (e) { app.mode = null; return toast('Не удалось войти в комнату'); }
+  connecting(true);
+  try { await joinGameRoom(code); } catch (e) { app.mode = null; connecting(false); render(true); return toast('Нет связи. Проверь интернет и попробуй ещё раз'); }
+  connecting(false);
   keepAwake();
   render(true);
 }
