@@ -806,6 +806,7 @@ function viewMenu() {
       ${fresh(ls) ? '<button class="btn" data-a="localResume">Продолжить игру</button>' : ''}
       <button class="btn ${fresh(ls) ? 'sec' : ''}" data-a="local">Играть на одном телефоне</button>
     </div>
+    ${window.MG_BUILD === 'pages' ? `<a class="btn sec" style="display:block;text-align:center;text-decoration:none" href="./ibbenburen/">🎲 Иббенбюрен: наша команда</a>` : ''}
     ${rulesHtml()}`;
 }
 

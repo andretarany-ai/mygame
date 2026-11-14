@@ -49,3 +49,10 @@ npm start
 1. Settings → General → Danger Zone → **Change visibility → Public** (бесплатные Pages работают только для публичных репозиториев).
 2. Settings → **Pages** → Source: *Deploy from a branch* → ветка `claude/admiring-goodall-1cv0sh`, папка **/docs** → Save.
 3. Через 1–2 минуты игра откроется по адресу `https://andretarany-ai.github.io/mygame/`.
+
+## Иббенбюрен: наша команда (настольная игра про бизнес)
+Адрес: `https://andretarany-ai.github.io/mygame/ibbenburen/` (кнопка есть и в меню викторины).
+- `ibbenburen/engine.js` — поле, карточки и все правила (покупка, аукцион, аренда, дома и отели,
+  залог, сделки, тюрьма, долги и банкротство). Кубики — криптографически честный случай у хоста.
+- `ibbenburen/template.html` — интерфейс и 3D-поле на Three.js (камера за спиной фишки во время хода).
+- Сборка: `node ibbenburen/build.js` → `docs/ibbenburen/index.html`.
