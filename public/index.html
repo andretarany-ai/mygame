@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#0b1a4a">
+  <title>Моя игра</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header id="top">
+    <div id="scores"></div>
+    <button id="menuBtn" aria-label="Меню">⋯</button>
+  </header>
+  <div id="timer"><div id="timerFill"></div></div>
+  <main id="main"></main>
+  <div id="menu" class="hidden">
+    <div class="menu-box">
+      <div id="menuWho"></div>
+      <button data-act="skipRound">Пропустить остаток раунда</button>
+      <button data-act="switch">Сменить игрока</button>
+      <button data-act="abort" class="danger">Прервать игру (в лобби)</button>
+      <button data-act="close" class="ghost">Закрыть</button>
+    </div>
+  </div>
+  <div id="toast" class="hidden"></div>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
