@@ -66,7 +66,7 @@ h2 { font-family: var(--display); font-weight: 400; font-size: 20px; margin: 0; 
 .die { width: 34px; height: 34px; border-radius: 8px; background: #fff; color: #111; display: grid; place-items: center; font-family: var(--display); font-size: 20px; box-shadow: 0 3px 0 #0006; }
 .die.roll { animation: roll .5s ease-out; }
 @keyframes roll { 0% { transform: rotate(-200deg) scale(.6); } 100% { transform: none; } }
-#banner { position: absolute; left: 50%; top: 18%; transform: translateX(-50%); background: #000c; color: #fff; padding: 10px 16px; border-radius: 14px; font-weight: 800; font-size: 16px; text-align: center; max-width: 90%; pointer-events: none; animation: pop .35s ease-out; z-index: 3; }
+#banner { position: absolute; left: 50%; top: 18%; transform: translateX(-50%); background: #000c; color: #fff; padding: 10px 16px; border-radius: 14px; font-weight: 800; font-size: 16px; text-align: center; max-width: 90%; pointer-events: none; animation: pop .35s ease-out; z-index: 6; }
 #banner.big { font-size: 22px; top: 40%; }
 #banner .plus { color: #6ef0a3; } #banner .minus { color: #ff8e93; }
 @keyframes pop { 0% { transform: translateX(-50%) scale(.6); opacity: 0; } 100% { transform: translateX(-50%) scale(1); opacity: 1; } }
@@ -83,6 +83,15 @@ h2 { font-family: var(--display); font-weight: 400; font-size: 20px; margin: 0; 
 .chip.flash-plus { animation: fplus .9s; } .chip.flash-minus { animation: fminus .9s; }
 @keyframes fplus { 30% { background: #1e6b3f; transform: scale(1.06); } }
 @keyframes fminus { 30% { background: #7a1d24; transform: scale(1.06); } }
+.casino .bidrow button.on { background: var(--gold); color: var(--ink); }
+.casino .bidrow button.red { background: #c62828; color: #fff; }
+.casino .bidrow button.black { background: #111; color: #fff; border: 1px solid #fff3; }
+.casino .bidrow button.zero { background: #1b7a3d; color: #fff; }
+#roulette { position: absolute; inset: 0; z-index: 4; display: grid; place-items: center; background: #000a; }
+#roulette .rw { position: relative; width: 78%; aspect-ratio: 1; }
+#roulette canvas { width: 100%; height: 100%; display: block; }
+#roulette .ptr { position: absolute; left: 50%; top: -4%; transform: translateX(-50%); font-size: 30px; filter: drop-shadow(0 2px 2px #000); }
+#roulette .ball { position: absolute; left: 50%; top: 50%; width: 5%; aspect-ratio: 1; margin: -2.5% 0 0 -2.5%; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #fff, #bbb); box-shadow: 0 1px 3px #000; }
 #viewBtn { position: absolute; top: 8px; left: 8px; background: #000a; color: #fff; padding: 6px 10px; font-size: 13px; border-radius: 999px; }
 
 main { padding-block: 10px 28px; display: grid; gap: 10px; }
@@ -146,6 +155,7 @@ details { color: var(--muted); } details p { color: var(--fg); line-height: 1.5;
     <button id="viewBtn" type="button">Вид сверху</button>
     <div id="boardHint"><span id="hintText"></span></div>
     <div id="banner" hidden></div>
+    <div id="roulette" hidden><div class="rw"><canvas width="600" height="600"></canvas><div class="ball"></div><div class="ptr">🔻</div></div></div>
     <div id="cardFly" hidden><div class="cf-inner"><div class="cf-back"></div><div class="cf-front"><div class="cf-deck"></div><div class="cf-text"></div><div class="cf-who"></div><button class="cf-ok" type="button">Дальше</button></div></div></div>
   </div>
   <main id="main"><div class="logo">ИББЕНБЮРЕН</div><p class="sub">Загрузка…</p></main>
@@ -242,6 +252,8 @@ function hostAct(peer, k, d, self) {
     case 'buy': G.buy(n); break;
     case 'decline': G.decline(n); break;
     case 'pass': G.pass(n); break;
+    case 'casinoBet': G.casinoBet(n, d?.amt, d?.on); break;
+    case 'casinoSkip': G.casinoSkip(n); break;
     case 'bid': G.bid(n, d?.v); break;
     case 'end': G.endTurn(n); break;
     case 'build': G.build(n, c); break;
@@ -654,6 +666,50 @@ function playCard(e) {
   });
 }
 
+// ---------- Рулетка ----------
+function drawWheel(cv) {
+  const x = cv.getContext('2d'), R = cv.width / 2, n = WHEEL.length, a = (Math.PI * 2) / n;
+  x.clearRect(0, 0, cv.width, cv.height);
+  x.save(); x.translate(R, R);
+  x.fillStyle = '#5b3a1e'; x.beginPath(); x.arc(0, 0, R, 0, Math.PI * 2); x.fill();
+  for (let i = 0; i < n; i++) {
+    const v = WHEEL[i], c = rouletteColor(v);
+    x.fillStyle = c === 'zero' ? '#1b7a3d' : c === 'red' ? '#c62828' : '#151515';
+    x.beginPath(); x.moveTo(0, 0); x.arc(0, 0, R * 0.92, -Math.PI / 2 + (i - 0.5) * a, -Math.PI / 2 + (i + 0.5) * a); x.closePath(); x.fill();
+    x.strokeStyle = '#d4af37'; x.lineWidth = 2; x.stroke();
+    x.save(); x.rotate(i * a); x.fillStyle = '#fff'; x.font = `bold ${Math.round(R * 0.075)}px sans-serif`; x.textAlign = 'center'; x.fillText(String(v), 0, -R * 0.8); x.restore();
+  }
+  x.fillStyle = '#3a2410'; x.beginPath(); x.arc(0, 0, R * 0.55, 0, Math.PI * 2); x.fill();
+  x.fillStyle = '#d4af37'; x.beginPath(); x.arc(0, 0, R * 0.12, 0, Math.PI * 2); x.fill();
+  x.fillStyle = '#ffc93c'; x.font = `${Math.round(R * 0.14)}px "Russo One", sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('КАЗИНО', 0, R * 0.3);
+  x.restore();
+}
+async function playRoulette(e) {
+  const box = $('#roulette'), cv = box.querySelector('canvas'), ball = box.querySelector('.ball');
+  drawWheel(cv);
+  box.hidden = false;
+  const names = { red: '🔴 красное', black: '⚫ чёрное', zero: '🟢 зеро' };
+  setBanner(`🎰 ${esc(e.who)}: ${e.amt} € на ${names[e.on]}`);
+  const idx = WHEEL.indexOf(e.r), a = 360 / WHEEL.length;
+  const target = 360 * 5 - idx * a; // ячейка с выпавшим числом встаёт под указатель
+  const r = cv.getBoundingClientRect().width / 2;
+  for (let i = 0; i < 10; i++) noise(0.03, 0.1, i * 0.25 + i * i * 0.02);
+  await tween(4200, (k) => {
+    const e2 = 1 - Math.pow(1 - k, 3);
+    cv.style.transform = `rotate(${target * e2}deg)`;
+    // шарик бежит навстречу и опускается к ячейкам
+    const ang = (-90 - 360 * 7 * (1 - e2)) * Math.PI / 180, rad = r * (0.86 - 0.07 * e2);
+    ball.style.transform = `translate(${Math.cos(ang) * rad}px, ${Math.sin(ang) * rad}px)`;
+  });
+  const c = rouletteColor(e.r), won = e.net > 0;
+  if (won) { sfx.buy(); shownMoney(e.who, e.net); flashChip(e.who, true); } else { sfx.thud(); shownMoney(e.who, e.net); flashChip(e.who, false); }
+  setBanner(`${c === 'zero' ? '🟢' : c === 'red' ? '🔴' : '⚫'} ${e.r} — ${won ? `<span class="plus">${esc(e.who)} выигрывает +${e.net} €!</span>` : `<span class="minus">${esc(e.who)} проигрывает ${e.amt} €</span>`}`, true);
+  await sleep(2200);
+  setBanner('');
+  box.hidden = true;
+  cv.style.transform = '';
+}
+
 // ---------- Сообщения поверх поля ----------
 function setBanner(html, big) {
   const b = $('#banner');
@@ -680,6 +736,7 @@ async function playEvent(e) {
       if (S) S.pl[e.who][1] = e.to;
       break;
     case 'card': await playCard(e); break;
+    case 'roulette': await playRoulette(e); break;
     case 'jail': sfx.siren(); setBanner(`🚔 ${esc(e.who)} отправляется в тюрьму!`, true); await sleep(1300); setBanner(''); break;
     case 'gain':
       sfx.coin(); shownMoney(e.who, e.amt); flashChip(e.who, true);
@@ -834,6 +891,7 @@ function rulesHtml() {
     Вокзалы-транспорт: 25/50/100/200 € в зависимости от того, сколько их у владельца. Stadtwerke и Vodafone: сумма кубиков × 4 (или × 10, если обе у одного).
     Дубль — ходишь ещё раз, три дубля подряд — в тюрьму. Из тюрьмы: заплатить 50 €, карта или дубль (3 попытки).
     Не хватает денег — продавай дома за полцены или закладывай улицы. Выкуп из залога +10 %. Не смог заплатить — банкрот.
+    Казино (угол поля): можно поставить от 10 до 500 € на красное или чёрное (×2) или на зеро (×36).
     Выигрывает последний, кто не обанкротился (или самый богатый, если хост закончит игру раньше).</p></details>`;
 }
 function viewWait() {
@@ -912,6 +970,19 @@ function viewGame(V, me) {
           <div class="two"><button class="btn sec" data-a="decline">🔨 На аукцион</button><button class="btn ghost" data-a="pass">Не покупать</button></div>
           ${cp.money < CELLS[c].p ? '<p class="note">Не хватает денег — можно заложить улицу или отправить на аукцион.</p>' : ''}`
         : `<p class="status">${esc(V.cur)} решает, покупать ли…</p>`}</div>`);
+    } else if (V.step === 'casino') {
+      if (isMe) {
+        const max = Math.min(CASINO_MAX, cp.money), sel = Math.min(app.casinoAmt || 50, max);
+        parts.push(`<div class="panel casino"><p class="status">🎰 Казино! Сделаешь ставку?</p>
+          ${max >= CASINO_MIN ? `<div class="bidrow">${[10, 50, 100, 200, 500].filter((v) => v <= max).map((v) => `<button data-camt="${v}" class="${v === sel ? 'on' : ''}">${v} €</button>`).join('')}</div>
+          <div class="big">${sel} €</div>
+          <div class="bidrow">
+            <button class="red" data-con="red">🔴 Красное<br><small>×2</small></button>
+            <button class="black" data-con="black">⚫ Чёрное<br><small>×2</small></button>
+            <button class="zero" data-con="zero">🟢 Зеро<br><small>×36</small></button>
+          </div>` : '<p class="note">Денег на ставку не хватает.</p>'}
+          <button class="btn ghost" data-a="casinoSkip">Уйти из казино</button></div>`);
+      } else parts.push(`<div class="panel"><p class="status">🎰 ${esc(V.cur)} в казино, думает о ставке…</p></div>`);
     } else if (V.step === 'roll') {
       if (isMe) {
         if (cp.jail) parts.push(`<div class="panel"><p class="status">🚔 Ты в тюрьме (попытка ${cp.jt + 1} из 3)</p>
@@ -1062,6 +1133,7 @@ const actions = {
   buy: () => act('buy'),
   decline: () => act('decline'),
   pass: () => act('pass'),
+  casinoSkip: () => act('casinoSkip'),
   end: () => act('end'),
   skip: () => act('skip'),
   payDebt: () => act('payDebt'),
@@ -1091,6 +1163,8 @@ function bindMain() {
   m.querySelectorAll('[data-appr]').forEach((b) => b.onclick = () => act('approve', b.dataset.appr));
   m.querySelectorAll('[data-deny]').forEach((b) => b.onclick = () => act('deny', b.dataset.deny));
   m.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => { app.tab = b.dataset.tab; renderPanel(true); });
+  m.querySelectorAll('[data-camt]').forEach((b) => b.onclick = () => { app.casinoAmt = Number(b.dataset.camt); renderPanel(true); });
+  m.querySelectorAll('[data-con]').forEach((b) => b.onclick = () => { const V = view(); act('casinoBet', { amt: Math.min(app.casinoAmt || 50, CASINO_MAX, V.pl[myName()].money), on: b.dataset.con }); });
   m.querySelectorAll('[data-bid]').forEach((b) => b.onclick = () => act('bid', { v: Number(b.dataset.bid) }));
   const code = $('#code'); if (code) code.onkeydown = (e) => { if (e.key === 'Enter') joinOnline(code.value); };
 }

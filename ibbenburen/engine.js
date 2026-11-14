@@ -42,7 +42,7 @@ const CELLS = [
   { t: 'bank', n: 'Банк', s: 'Банк', e: '🏦' },
   P(3, 'Салон маникюра азиатов', 'Маникюр', '💅', 180, 'Быстро, ровно и без записи.'),
   P(3, 'Суши бар', 'Суши', '🍣', 200, 'Безлимитные роллы до потери пульса.'),
-  { t: 'park', n: 'Бесплатная парковка', s: 'Парковка', e: '🅿️', d: 'Редкое место в Германии, где парковка бесплатная. Отдыхай.' },
+  { t: 'casino', n: 'Казино', s: 'Казино', e: '🎰', d: 'Рулетка: ставь от 10 до 500 € на красное или чёрное (выигрыш ×2) либо на зеро (×36). Можно просто пройти мимо.' },
   P(4, 'Пиццерия Торино', 'Торино', '🍕', 220, 'Лучшая пицца в округе.'),
   { t: 'luck', n: 'Удача', s: 'Удача', e: '🍀' },
   P(4, 'Басбанхоф', 'Басбанхоф', '🚏', 220, 'Здесь все встречаются, ждут и опаздывают.'),
@@ -64,6 +64,11 @@ const CELLS = [
   P(7, 'Угольная шахта', 'Шахта', '⛏️', 400, 'Легенда Иббенбюрена. Глубже некуда.'),
 ];
 const RAILS = [5, 15, 25, 35];
+// Рулетка (европейская, 37 ячеек)
+const WHEEL = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
+const REDS = [1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36];
+const rouletteColor = (r) => (r === 0 ? 'zero' : REDS.includes(r) ? 'red' : 'black');
+const CASINO_MIN = 10, CASINO_MAX = 500;
 const OWNABLE = (c) => ['prop', 'rail', 'util'].includes(CELLS[c].t);
 const groupCells = (g) => CELLS.map((x, i) => (x.t === 'prop' && x.g === g ? i : -1)).filter((i) => i >= 0);
 
@@ -365,6 +370,9 @@ class Engine {
     } else if (cell.t === 'tax') {
       this.log(`${n}: ${cell.n} −${this.fmt(cell.amt)}`);
       this.charge(n, null, cell.amt, cell.n);
+    } else if (cell.t === 'casino') {
+      g.step = 'casino';
+      return this.changed();
     } else if (cell.t === 'gojail') {
       this.log(`${n} отправляется в тюрьму`);
       this.sendJail(n);
@@ -459,6 +467,24 @@ class Engine {
     g.offer = null;
     this.log(`«${CELLS[g.auc.c].n}» уходит на аукцион`);
     this.armAuction();
+    this.proceed();
+  }
+  casinoBet(n, amt, on) {
+    const g = this.g, p = this.pl[n];
+    amt = Math.floor(Number(amt));
+    if (g.step !== 'casino' || n !== this.cur() || !['red', 'black', 'zero'].includes(on)) return;
+    if (!(amt >= CASINO_MIN && amt <= Math.min(CASINO_MAX, p.money))) return;
+    const r = rnd(37), win = rouletteColor(r) === on;
+    const net = win ? (on === 'zero' ? amt * 35 : amt) : -amt;
+    p.money += net;
+    const names = { red: 'красное', black: 'чёрное', zero: 'зеро' };
+    this.log(`🎰 ${n} ставит ${this.fmt(amt)} на ${names[on]}. Выпало ${r} — ${win ? 'выигрыш +' + this.fmt(net) : 'проигрыш ' + this.fmt(amt)}`);
+    this.ev('roulette', { who: n, amt, on, r, net });
+    this.proceed();
+  }
+  casinoSkip(n) {
+    if (this.g.step !== 'casino' || n !== this.cur()) return;
+    this.log(`🎰 ${n} проходит мимо казино`);
     this.proceed();
   }
   pass(n) {
@@ -649,5 +675,5 @@ class Engine {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { PLAYERS, PCOLORS, CELLS, GROUPS, LUCK, BANK, RAILS, R, Engine, rentTable, RAIL_RENT, mortgageValue, unmortgageCost, groupCells, OWNABLE, d6, START_MONEY };
+  module.exports = { WHEEL, rouletteColor, PLAYERS, PCOLORS, CELLS, GROUPS, LUCK, BANK, RAILS, R, Engine, rentTable, RAIL_RENT, mortgageValue, unmortgageCost, groupCells, OWNABLE, d6, START_MONEY };
 }
