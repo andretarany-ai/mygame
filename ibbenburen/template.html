@@ -163,6 +163,9 @@ body.ingame #main::before { content: ""; justify-self: center; width: 38px; heig
 body.ingame #boardHint { top: calc(env(safe-area-inset-top, 0px) + 74px); bottom: auto; }
 body.ingame #dice { top: calc(env(safe-area-inset-top, 0px) + 108px); right: max(10px, env(safe-area-inset-right, 0px)); }
 body.ingame #viewBtn { display: none; }
+#camReset { position: absolute; z-index: 5; right: max(10px, env(safe-area-inset-right, 0px)); top: calc(env(safe-area-inset-top, 0px) + 74px); background: #0c1421cc; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border: 1px solid #ffffff2a; color: #fff; padding: 8px 12px; border-radius: 999px; font-weight: 800; font-size: 13px; }
+#boardWrap canvas { touch-action: none; }
+#fx { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 40; }
 .act { display: grid; gap: 8px; }
 .line { display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 800; font-size: 16px; text-align: center; min-height: 28px; }
 .line .pdot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
@@ -196,6 +199,7 @@ body.ingame #viewBtn { display: none; }
   <div id="boardWrap" hidden>
     <div id="dice"></div>
     <button id="viewBtn" type="button" aria-label="Сменить вид">🎥</button>
+    <button id="camReset" type="button" hidden>🎯 Всё поле</button>
     <div id="boardHint"><span id="hintText"></span></div>
     <div id="banner" hidden></div>
     <div id="roulette" hidden><div class="rw"><canvas width="600" height="600"></canvas><div class="ball"></div><div class="ptr">🔻</div></div></div>
@@ -205,6 +209,7 @@ body.ingame #viewBtn { display: none; }
 </div>
 <div class="overlay" id="sheetWrap" hidden><div class="sheet" id="sheet"></div></div>
 <div id="toast" hidden></div>
+<canvas id="fx"></canvas>
 
 <script>
 /*__ENGINE__*/
@@ -400,7 +405,7 @@ function cellRect(i) {
 }
 const cellCenter = (i) => { const r = cellRect(i); return { x: r.x + r.w / 2 - B3 / 2, z: r.z + r.h / 2 - B3 / 2 }; };
 
-const T3 = { ok: false, busy: false, tokens: {}, animPos: {}, view: 'top', dirty: true, offY: 0, offTarget: 0 };
+const T3 = { ok: false, busy: false, tokens: {}, animPos: {}, skipJump: {}, view: 'top', dirty: true, offY: 0, offTarget: 0 };
 function setupBoard() {
   if (!window.THREE) { $('#viewBtn').hidden = true; return; }
   const wrap = $('#boardWrap');
@@ -462,6 +467,10 @@ function setupBoard() {
   }
   const extras = new THREE.Group();
   scene.add(extras);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.27, 0.03, 10, 40), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.7 }));
+  ring.rotation.x = -Math.PI / 2; ring.position.y = 0.02; ring.visible = false;
+  scene.add(ring);
+  T3.ring = ring;
   Object.assign(T3, { ok: true, renderer, scene, camera, board, extras, wrap });
 
   const resize = () => {
@@ -482,25 +491,30 @@ function setupBoard() {
   new ResizeObserver(onPanel).observe($('#topbar'));
   resize();
 
-  // Нажатие на клетку — карточка
-  let down = null;
-  renderer.domElement.addEventListener('pointerdown', (e) => { down = [e.clientX, e.clientY]; });
-  renderer.domElement.addEventListener('pointerup', (e) => {
-    if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 10) return;
+  setupControls(renderer.domElement);
+  $('#camReset').onclick = () => { Object.assign(ORB, ORB_DEF); T3.view = 'top'; if (!T3.busy) animCam(topCam(), 600); updateCamReset(); };
+  T3.pickAt = (cx, cy) => {
     const r = renderer.domElement.getBoundingClientRect();
+    const e = { clientX: cx, clientY: cy };
     const v = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
     const ray = new THREE.Raycaster(); ray.setFromCamera(v, camera);
     const hit = ray.intersectObject(board)[0];
     if (!hit) return;
     const x = hit.point.x + B3 / 2, z = hit.point.z + B3 / 2;
     for (let i = 0; i < 40; i++) { const c = cellRect(i); if (x >= c.x && x <= c.x + c.w && z >= c.z && z <= c.z + c.h) { openCell(i); break; } }
-  });
+  };
   $('#viewBtn').onclick = () => actions.toggleView();
 
   const loop = () => {
     if (Math.abs(T3.offTarget - T3.offY) > 0.5) {
       T3.offY += (T3.offTarget - T3.offY) * 0.35;
       camera.setViewOffset(wrap.clientWidth, wrap.clientHeight, 0, T3.offY, wrap.clientWidth, wrap.clientHeight);
+      T3.dirty = true;
+    }
+    if (T3.ring && T3.ring.visible) {
+      const t = performance.now() / 1000;
+      T3.ring.scale.setScalar(1 + Math.sin(t * 3) * 0.12);
+      T3.ring.material.opacity = 0.55 + Math.sin(t * 3) * 0.25;
       T3.dirty = true;
     }
     if (T3.dirty) { renderer.render(scene, camera); T3.dirty = false; }
@@ -589,14 +603,22 @@ function insets() {
   if (!document.body.classList.contains('ingame')) return { top: 0, bottom: 0 };
   return { top: $('#topbar').offsetHeight || 0, bottom: $('#main').offsetHeight || 0 };
 }
-function topCam() {
+// Орбитальная камера: поворот одним пальцем, приближение и сдвиг двумя
+const ORB_DEF = { yaw: 0, pitch: 1.5621, zoom: 1, tx: 0, tz: 0 };
+const ORB = { ...ORB_DEF };
+function orbitChanged() { return Math.abs(ORB.yaw) > 0.02 || Math.abs(ORB.pitch - ORB_DEF.pitch) > 0.02 || Math.abs(ORB.zoom - 1) > 0.03 || Math.hypot(ORB.tx, ORB.tz) > 0.05; }
+function baseDist() {
   const cam = T3.camera, fov = cam.fov * Math.PI / 180;
   const w = T3.wrap.clientWidth || 1, h = T3.wrap.clientHeight || 1, ins = insets();
   const visH = Math.max(120, h - ins.top - ins.bottom);
   const px = Math.min(w, visH) / (B3 * 1.04);
-  const d = h / (2 * Math.tan(fov / 2) * px);
-  if (T3.view === 'tilt') return { pos: new THREE.Vector3(0, d * 0.82, d * 0.62), look: new THREE.Vector3(0, 0, 0.35) };
-  return { pos: new THREE.Vector3(0, d, 0.001), look: new THREE.Vector3(0, 0, 0) };
+  return h / (2 * Math.tan(fov / 2) * px);
+}
+function topCam() {
+  const dist = baseDist() / ORB.zoom, p = ORB.pitch, y = ORB.yaw;
+  const look = new THREE.Vector3(ORB.tx, 0, ORB.tz);
+  const pos = look.clone().add(new THREE.Vector3(Math.cos(p) * Math.sin(y), Math.sin(p), Math.cos(p) * Math.cos(y)).multiplyScalar(dist));
+  return { pos, look };
 }
 function fwd(i, dir) {
   const a = cellCenter(i), b = cellCenter(((i + dir) % 40 + 40) % 40);
@@ -662,6 +684,225 @@ async function playMove(mv) {
   }
   tok.position.copy(tokenSpot(mv.who, mv.to));
   T3.animPos[mv.who] = mv.to;
+}
+
+// ---------- Касания: поворот, приближение, сдвиг, нажатие на клетку ----------
+function updateCamReset() { const b = $('#camReset'); if (b) b.hidden = !orbitChanged() || !document.body.classList.contains('ingame'); }
+function applyOrbit() {
+  ORB.pitch = Math.min(ORB_DEF.pitch, Math.max(0.42, ORB.pitch));
+  ORB.zoom = Math.min(4.5, Math.max(0.75, ORB.zoom));
+  ORB.tx = Math.max(-5, Math.min(5, ORB.tx)); ORB.tz = Math.max(-5, Math.min(5, ORB.tz));
+  if (!T3.busy) setCam(topCam());
+  updateCamReset();
+}
+function setupControls(el) {
+  const pts = new Map();
+  let moved = 0, multi = false, pinch = null, lastTap = 0;
+  const pinchInfo = () => { const [a, b] = [...pts.values()]; return { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; };
+  const wpp = () => (2 * T3.camera.position.distanceTo(camState?.look || new THREE.Vector3()) * Math.tan(T3.camera.fov * Math.PI / 360)) / (el.clientHeight || 1);
+  el.addEventListener('pointerdown', (e) => {
+    try { el.setPointerCapture(e.pointerId); } catch (err) { /* нет */ }
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pts.size === 1) { moved = 0; multi = false; }
+    if (pts.size === 2) { multi = true; pinch = pinchInfo(); }
+  });
+  el.addEventListener('pointermove', (e) => {
+    const p = pts.get(e.pointerId);
+    if (!p) return;
+    const dx = e.clientX - p.x, dy = e.clientY - p.y;
+    p.x = e.clientX; p.y = e.clientY;
+    moved += Math.abs(dx) + Math.abs(dy);
+    if (T3.busy) return;
+    if (pts.size === 1 && !multi && moved > 8) {
+      ORB.yaw -= dx * 0.009;
+      ORB.pitch += dy * 0.006;
+      applyOrbit();
+    } else if (pts.size === 2 && pinch) {
+      const pi = pinchInfo(), k = wpp();
+      ORB.zoom *= pi.d / pinch.d;
+      const mx = pi.x - pinch.x, my = pi.y - pinch.y, y = ORB.yaw;
+      ORB.tx += (-Math.cos(y) * mx - Math.sin(y) * my) * k;
+      ORB.tz += (Math.sin(y) * mx - Math.cos(y) * my) * k;
+      pinch = pi;
+      applyOrbit();
+    }
+  });
+  const up = (e) => {
+    if (!pts.has(e.pointerId)) return;
+    pts.delete(e.pointerId);
+    if (pts.size < 2) pinch = null;
+    if (pts.size === 0 && !multi && moved < 10) {
+      const now = Date.now();
+      if (now - lastTap < 320) { $('#camReset').click(); lastTap = 0; return; } // двойное нажатие — показать всё поле
+      lastTap = now;
+      const cx = e.clientX, cy = e.clientY;
+      setTimeout(() => { if (lastTap === now) T3.pickAt(cx, cy); }, 330);
+    }
+  };
+  el.addEventListener('pointerup', up);
+  el.addEventListener('pointercancel', up);
+  el.addEventListener('wheel', (e) => { e.preventDefault(); if (T3.busy) return; ORB.zoom *= Math.exp(-e.deltaY * 0.0015); applyOrbit(); }, { passive: false });
+}
+
+// ---------- Полицейская машина ----------
+function policeCar() {
+  if (T3.car) return T3.car;
+  const g = new THREE.Group();
+  const M = (c, extra) => new THREE.MeshStandardMaterial({ color: c, roughness: .45, metalness: .2, ...extra });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.15, 0.66), M('#f1f4f8')); body.position.y = 0.13;
+  const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.345, 0.05, 0.62), M('#1e5bb8')); stripe.position.y = 0.13;
+  const hood = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.06, 0.2), M('#1e5bb8')); hood.position.set(0, 0.2, 0.23);
+  const cabin = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.13, 0.32), M('#1a2433', { roughness: .15 })); cabin.position.set(0, 0.26, -0.04);
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.02, 0.3), M('#f1f4f8')); roof.position.set(0, 0.335, -0.04);
+  const blue = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.05, 0.07), new THREE.MeshStandardMaterial({ color: '#2a6bff', emissive: '#2a6bff', emissiveIntensity: 2 }));
+  const blue2 = blue.clone(); blue2.material = blue.material.clone();
+  blue.position.set(-0.07, 0.37, -0.04); blue2.position.set(0.07, 0.37, -0.04);
+  const wGeo = new THREE.CylinderGeometry(0.075, 0.075, 0.05, 16), wMat = M('#111111');
+  const wheels = [];
+  for (const [x, z] of [[-0.17, 0.2], [0.17, 0.2], [-0.17, -0.21], [0.17, -0.21]]) { const w = new THREE.Mesh(wGeo, wMat); w.rotation.z = Math.PI / 2; w.position.set(x, 0.075, z); wheels.push(w); g.add(w); }
+  for (const m of [body, stripe, hood, cabin, roof, blue, blue2]) { m.castShadow = true; g.add(m); }
+  const light = new THREE.PointLight('#3b7bff', 0, 2.5); light.position.y = 0.6; g.add(light);
+  g.visible = false;
+  T3.scene.add(g);
+  T3.car = { g, blue, blue2, light, wheels };
+  return T3.car;
+}
+function outward(i) {
+  const side = cellRect(i).side;
+  return [new THREE.Vector3(0, 0, 1), new THREE.Vector3(-1, 0, 0), new THREE.Vector3(0, 0, -1), new THREE.Vector3(1, 0, 0)][side];
+}
+function lanePoint(i) { const c = cellCenter(i), o = outward(i); return new THREE.Vector3(c.x, 0, c.z).addScaledVector(o, 0.3); }
+async function playJail(e) {
+  const tok = T3.tokens[e.who];
+  const from = T3.animPos[e.who] ?? app.shownP?.pl?.[e.who]?.[1] ?? 30;
+  const car = policeCar();
+  sfx.siren();
+  setBanner(`🚔 Полиция забирает ${esc(e.who)}!`, false);
+  const blink = () => { const on = Math.floor(performance.now() / 160) % 2; car.blue.material.emissiveIntensity = on ? 3 : 0.2; car.blue2.material.emissiveIntensity = on ? 0.2 : 3; car.light.intensity = on ? 1.5 : 0.4; car.light.color.set(on ? '#3b7bff' : '#ff3b3b'); };
+  const spin = (d) => car.wheels.forEach((w) => { w.rotation.x += d; });
+  // машина приезжает из-за края поля
+  const stop = lanePoint(from), outV = outward(from);
+  const start = stop.clone().addScaledVector(outV, 3).add(new THREE.Vector3(0, 0, 0));
+  car.g.position.copy(start); car.g.lookAt(stop); car.g.visible = true;
+  const chase = (pos, dir) => ({ pos: pos.clone().addScaledVector(dir, -2.7).add(new THREE.Vector3(0, 2.1, 0)), look: pos.clone().addScaledVector(dir, 1.4) });
+  const tokPos = tok.position.clone();
+  await animCam({ pos: tokPos.clone().addScaledVector(outV, 3.6).add(new THREE.Vector3(0, 2.8, 0)), look: tokPos.clone().addScaledVector(outV, 0.6) }, 700);
+  await tween(900, (k) => { car.g.position.lerpVectors(start, stop, ease(k)); blink(); spin(0.25); });
+  // фишка запрыгивает в машину
+  const s0 = tok.scale.clone();
+  await tween(450, (k) => { tok.position.lerpVectors(tokPos, stop.clone().setY(0.35), k); tok.position.y = 0.35 + Math.sin(k * Math.PI) * 0.5; tok.scale.setScalar(1 - k * 0.9); blink(); });
+  tok.visible = false;
+  // едем в тюрьму по краю поля коротким путём
+  const fwdSteps = (JAIL_CELL - from + 40) % 40, back = 40 - fwdSteps, dir = fwdSteps <= back ? 1 : -1, n = Math.min(fwdSteps, back);
+  let cur = from;
+  for (let s2 = 0; s2 < n; s2++) {
+    const nxt = ((cur + dir) % 40 + 40) % 40;
+    const a = lanePoint(cur), b = lanePoint(nxt), d = b.clone().sub(a).normalize();
+    const camFrom = { ...camState }, camTo = chase(b, d);
+    const q0 = car.g.quaternion.clone(); car.g.lookAt(car.g.position.clone().add(d)); const q1 = car.g.quaternion.clone(); car.g.quaternion.copy(q0);
+    await tween(120, (k) => {
+      car.g.position.lerpVectors(a, b, k); car.g.quaternion.slerpQuaternions(q0, q1, Math.min(1, k * 2));
+      setCam({ pos: camFrom.pos.clone().lerp(camTo.pos, 0.35), look: camFrom.look.clone().lerp(camTo.look, 0.35) });
+      blink(); spin(0.4);
+    });
+    cur = nxt;
+  }
+  // высаживаем у тюрьмы
+  const jailSpot = tokenSpot(e.who, JAIL_CELL);
+  tok.visible = true;
+  await tween(450, (k) => { tok.position.lerpVectors(car.g.position.clone().setY(0.35), jailSpot, k); tok.position.y = Math.sin(k * Math.PI) * 0.5; tok.scale.setScalar(0.1 + k * 0.9); blink(); });
+  tok.scale.copy(s0); tok.position.copy(jailSpot);
+  T3.animPos[e.who] = JAIL_CELL;
+  T3.skipJump[e.who] = true;
+  setBanner(`🚔 ${esc(e.who)} в тюрьме!`, true);
+  const away = car.g.position.clone().addScaledVector(outward(JAIL_CELL), 3.5);
+  const q0 = car.g.quaternion.clone(); car.g.lookAt(away); const q1 = car.g.quaternion.clone(); car.g.quaternion.copy(q0);
+  const p0 = car.g.position.clone();
+  await tween(900, (k) => { car.g.quaternion.slerpQuaternions(q0, q1, Math.min(1, k * 3)); car.g.position.lerpVectors(p0, away, ease(k)); blink(); spin(0.3); });
+  car.g.visible = false; car.light.intensity = 0;
+  setBanner('');
+  await animCam(topCam(), 800);
+}
+const JAIL_CELL = 10;
+
+// ---------- Монеты, табличка «Куплено», конфетти ----------
+function coinMesh() {
+  T3.coinGeo = T3.coinGeo || new THREE.CylinderGeometry(0.13, 0.13, 0.035, 20);
+  T3.coinMat = T3.coinMat || new THREE.MeshStandardMaterial({ color: '#ffcc33', metalness: 0.85, roughness: 0.25, emissive: '#5a3b00', emissiveIntensity: 0.4 });
+  const m = new THREE.Mesh(T3.coinGeo, T3.coinMat); m.castShadow = true; return m;
+}
+function coinsFly(from, to, count = 7) {
+  if (!T3.ok) return Promise.resolve();
+  const jobs = [];
+  for (let i = 0; i < count; i++) {
+    const c = coinMesh(); T3.scene.add(c);
+    const a = from.clone().add(new THREE.Vector3((Math.random() - .5) * .2, 0.4, (Math.random() - .5) * .2));
+    const b = to.clone().add(new THREE.Vector3((Math.random() - .5) * .2, 0.25, (Math.random() - .5) * .2));
+    const hgt = 2 + Math.random() * 1.2;
+    jobs.push(sleep(i * 70).then(() => tween(750, (k) => { c.position.lerpVectors(a, b, k); c.position.y += Math.sin(k * Math.PI) * hgt; c.rotation.x = k * 12; c.rotation.z = k * 7; })).then(() => { T3.scene.remove(c); if (i % 2 === 0) tone(1200 + i * 60, 0.06, 'square', 0.03); }));
+  }
+  return Promise.all(jobs);
+}
+function coinShower(at, count = 14) {
+  if (!T3.ok) return Promise.resolve();
+  const jobs = [];
+  for (let i = 0; i < count; i++) {
+    const c = coinMesh(); T3.scene.add(c);
+    const x = at.x + (Math.random() - .5) * .6, z = at.z + (Math.random() - .5) * .6;
+    jobs.push(sleep(i * 50).then(() => tween(800, (k) => { c.position.set(x, 3.2 * (1 - k * k) + 0.03, z); c.rotation.x = k * 15; })).then(() => sleep(250)).then(() => T3.scene.remove(c)));
+  }
+  return Promise.all(jobs);
+}
+function soldSign(c, who) {
+  if (!T3.ok) return Promise.resolve();
+  const cv = document.createElement('canvas'); cv.width = 256; cv.height = 128;
+  const x = cv.getContext('2d');
+  x.fillStyle = PCOLORS[who]; x.fillRect(0, 0, 256, 128);
+  x.fillStyle = '#fff'; x.fillRect(8, 8, 240, 112);
+  x.fillStyle = PCOLORS[who]; x.font = 'bold 44px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillText('КУПЛЕНО', 128, 50); x.font = 'bold 30px sans-serif'; x.fillStyle = '#222'; x.fillText(who, 128, 95);
+  const tex = new THREE.CanvasTexture(cv); tex.encoding = THREE.sRGBEncoding;
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.4), new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide }));
+  const ctr = cellCenter(c);
+  T3.scene.add(sign);
+  return tween(1600, (k) => {
+    sign.position.set(ctr.x, 0.3 + Math.min(1, k * 2) * 0.8, ctr.z);
+    sign.quaternion.copy(T3.camera.quaternion);
+    sign.rotateZ(Math.sin(k * Math.PI * 4) * 0.08 * (1 - k));
+    const sc = k < 0.15 ? k / 0.15 : k > 0.8 ? (1 - k) / 0.2 : 1;
+    sign.scale.setScalar(Math.max(0.01, sc));
+  }).then(() => { T3.scene.remove(sign); tex.dispose(); });
+}
+function tokenPos(n) { return T3.tokens[n] ? T3.tokens[n].position.clone() : new THREE.Vector3(); }
+const fx = { parts: [], running: false };
+function confetti(n = 140) {
+  const cv = $('#fx'), ctx = cv.getContext('2d');
+  cv.width = innerWidth * (devicePixelRatio || 1); cv.height = innerHeight * (devicePixelRatio || 1);
+  const cols = ['#ffc93c', '#ff4d6d', '#a66bff', '#2f8cff', '#22c55e', '#ffffff'];
+  for (let i = 0; i < n; i++) fx.parts.push({ x: cv.width * (0.2 + Math.random() * 0.6), y: cv.height * 0.35, vx: (Math.random() - .5) * 22, vy: -Math.random() * 26 - 8, r: Math.random() * 6, vr: (Math.random() - .5) * .4, w: 8 + Math.random() * 8, h: 5 + Math.random() * 6, c: cols[i % cols.length], life: 1 });
+  if (fx.running) return;
+  fx.running = true;
+  const step = () => {
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    fx.parts = fx.parts.filter((p) => p.life > 0 && p.y < cv.height + 40);
+    for (const p of fx.parts) {
+      p.vy += 0.7; p.vx *= 0.985; p.x += p.vx; p.y += p.vy; p.r += p.vr; p.life -= 0.006;
+      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.r); ctx.globalAlpha = Math.max(0, Math.min(1, p.life * 2)); ctx.fillStyle = p.c; ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); ctx.restore();
+    }
+    if (fx.parts.length) requestAnimationFrame(step); else { fx.running = false; ctx.clearRect(0, 0, cv.width, cv.height); }
+  };
+  requestAnimationFrame(step);
+}
+async function playBankrupt(e) {
+  const tok = T3.tokens[e.who];
+  sfx.thud(); tone(200, 0.6, 'sawtooth', 0.08); tone(120, 0.8, 'sawtooth', 0.08, 0.3);
+  setBanner(`💥 ${esc(e.who)} банкрот!`, true);
+  if (tok) {
+    const p0 = tok.position.clone();
+    await tween(1400, (k) => { tok.rotation.y = k * 12; tok.position.y = p0.y - k * 0.5; tok.scale.setScalar(1 - k * 0.95); });
+    tok.visible = false; tok.scale.setScalar(1); tok.rotation.y = 0;
+  } else await sleep(1400);
+  setBanner('');
 }
 
 // ---------- Кубики в 3D ----------
@@ -778,7 +1019,7 @@ async function playRoulette(e) {
     ball.style.transform = `translate(${Math.cos(ang) * rad}px, ${Math.sin(ang) * rad}px)`;
   });
   const c = rouletteColor(e.r), won = e.net > 0;
-  if (won) { sfx.buy(); shownMoney(e.who, e.net); flashChip(e.who, true); } else { sfx.thud(); shownMoney(e.who, e.net); flashChip(e.who, false); }
+  if (won) { sfx.buy(); shownMoney(e.who, e.net); flashChip(e.who, true); confetti(e.on === 'zero' ? 220 : 110); } else { sfx.thud(); shownMoney(e.who, e.net); flashChip(e.who, false); }
   setBanner(`${c === 'zero' ? '🟢' : c === 'red' ? '🔴' : '⚫'} ${e.r} — ${won ? `<span class="plus">${esc(e.who)} выигрывает +${e.net} €!</span>` : `<span class="minus">${esc(e.who)} проигрывает ${e.amt} €</span>`}`, true);
   await sleep(2200);
   setBanner('');
@@ -811,23 +1052,33 @@ async function playEvent(e) {
   switch (e.k) {
     case 'dice': if (T3.ok) await playDice(e); break;
     case 'move':
-      if (T3.ok) await playMove(e);
+      if (e.kind === 'jump' && T3.skipJump[e.who]) { T3.skipJump[e.who] = false; T3.animPos[e.who] = e.to; }
+      else if (T3.ok) await playMove(e);
       if (S) S.pl[e.who][1] = e.to;
       break;
     case 'card': await playCard(e); break;
     case 'roulette': await playRoulette(e); break;
-    case 'jail': sfx.siren(); setBanner(`🚔 ${esc(e.who)} отправляется в тюрьму!`, true); await sleep(1300); setBanner(''); break;
+    case 'jail':
+      if (T3.ok && document.visibilityState === 'visible' && !matchMedia('(prefers-reduced-motion: reduce)').matches) await playJail(e);
+      else { sfx.siren(); setBanner(`🚔 ${esc(e.who)} отправляется в тюрьму!`, true); await sleep(1300); setBanner(''); }
+      break;
+    case 'bankrupt': await playBankrupt(e); if (S) S.pl[e.who][5] = 1; break;
+    case 'group': sfx.buy(); confetti(90); setBanner(`🎉 ${esc(e.who)} собрал(а) всю группу «${esc(GROUPS[e.g].name)}»! Аренда ×2, можно строить`, true); await sleep(2200); setBanner(''); break;
+    case 'build': if (S) { S.own = { ...S.own, [e.c]: { ...S.own[e.c], h: e.h } }; placeTokens(); } setBanner(`🏗️ ${esc(e.who)} строит ${e.h === 5 ? 'отель' : 'дом'}: ${esc(CELLS[e.c].s)}`); await sleep(1100); setBanner(''); break;
     case 'gain':
       sfx.coin(); shownMoney(e.who, e.amt); flashChip(e.who, true);
-      setBanner(`${esc(e.who)} <span class="plus">+${e.amt} €</span>${e.why === 'Старт' ? ' за Старт' : ''}`); await sleep(1300); setBanner(''); break;
+      setBanner(`${esc(e.who)} <span class="plus">+${e.amt} €</span>${e.why === 'Старт' ? ' за Старт' : ''}`);
+      await Promise.all([coinShower(tokenPos(e.who), Math.min(18, 6 + Math.round(e.amt / 20))), sleep(1300)]); setBanner(''); break;
     case 'pay':
       sfx.coin(); shownMoney(e.from, -e.amt); flashChip(e.from, false);
       if (e.to) { shownMoney(e.to, e.amt); flashChip(e.to, true); }
-      setBanner(`${esc(e.from)} <span class="minus">−${e.amt} €</span>${e.to ? ' → ' + esc(e.to) : ''}${e.why ? ' · ' + esc(e.why) : ''}`); await sleep(1500); setBanner(''); break;
+      setBanner(`${esc(e.from)} <span class="minus">−${e.amt} €</span>${e.to ? ' → ' + esc(e.to) : ''}${e.why ? ' · ' + esc(e.why) : ''}`);
+      await Promise.all([coinsFly(tokenPos(e.from), e.to ? tokenPos(e.to) : new THREE.Vector3(0, 0, 0), Math.min(12, 3 + Math.round(e.amt / 25))), sleep(1500)]); setBanner(''); break;
     case 'buy':
       sfx.buy(); shownMoney(e.who, -e.amt); flashChip(e.who, false);
       if (S) { S.own = { ...S.own, [e.c]: { o: e.who, h: 0, m: 0 } }; placeTokens(); }
-      setBanner(`🏷️ ${esc(e.who)} покупает «${esc(CELLS[e.c].n)}»${e.auc ? ' на аукционе' : ''} за ${e.amt} €`); await sleep(1500); setBanner(''); break;
+      setBanner(`🏷️ ${esc(e.who)} покупает «${esc(CELLS[e.c].n)}»${e.auc ? ' на аукционе' : ''} за ${e.amt} €`);
+      await Promise.all([soldSign(e.c, e.who), sleep(1500)]); setBanner(''); break;
     case 'note': setBanner(esc(e.t), e.big); await sleep(e.big ? 2000 : 1300); setBanner(''); break;
   }
 }
@@ -857,6 +1108,12 @@ function placeTokens() {
     if (!T3.busy) t.position.copy(tokenSpot(n, T3.animPos[n] ?? p.pos));
   }
   T3.dirty = true;
+  const curP = V.ph === 'play' ? V.order[V.turn] : null;
+  if (T3.ring) {
+    T3.ring.visible = !!curP && !T3.busy && !V.pl[curP]?.out;
+    if (curP) { const sp = tokenSpot(curP, T3.animPos[curP] ?? V.pl[curP].pos); T3.ring.position.set(sp.x, 0.02, sp.z); T3.ring.material.color.set(PCOLORS[curP]); }
+  }
+  const prevH = T3.prevH || null; T3.prevH = {};
   // дома, отели и владельцы
   T3.extras.clear();
   const houseGeo = new THREE.BoxGeometry(0.13, 0.12, 0.13), hotelGeo = new THREE.BoxGeometry(0.34, 0.16, 0.16);
@@ -872,8 +1129,11 @@ function placeTokens() {
       new THREE.MeshBasicMaterial({ color: PCOLORS[o.o], transparent: true, opacity: o.m ? 0.3 : 1 }));
     stripe.rotation.x = -Math.PI / 2; stripe.position.copy(outer);
     T3.extras.add(stripe);
-    if (o.h === 5) { const m = new THREE.Mesh(hotelGeo, hotelMat); m.castShadow = true; m.position.copy(bandC).setY(0.08); if (r.side % 2) m.rotation.y = Math.PI / 2; T3.extras.add(m); }
-    else for (let j = 0; j < o.h; j++) { const m = new THREE.Mesh(houseGeo, houseMat); m.castShadow = true; m.position.copy(bandC).addScaledVector(along, (j - (o.h - 1) / 2) * 0.17).setY(0.06); T3.extras.add(m); }
+    T3.prevH[c] = o.h;
+    const fresh = prevH && (prevH[c] || 0) < o.h;
+    const drop = (m, y) => { if (!fresh) { m.position.y = y; return; } m.position.y = y + 2.5; tween(700, (k) => { const b = k < 0.7 ? (k / 0.7) ** 2 : 1 - Math.sin((k - 0.7) / 0.3 * Math.PI) * 0.12; m.position.y = y + 2.5 * (1 - b); }).then(() => { m.position.y = y; sfx.thud(); }); };
+    if (o.h === 5) { const m = new THREE.Mesh(hotelGeo, hotelMat); m.castShadow = true; m.position.copy(bandC); drop(m, 0.08); if (r.side % 2) m.rotation.y = Math.PI / 2; T3.extras.add(m); }
+    else for (let j = 0; j < o.h; j++) { const m = new THREE.Mesh(houseGeo, houseMat); m.castShadow = true; m.position.copy(bandC).addScaledVector(along, (j - (o.h - 1) / 2) * 0.17); if (fresh && j >= (prevH[c] || 0)) drop(m, 0.06); else m.position.y = 0.06; T3.extras.add(m); }
   }
 }
 function setHint(t) { $('#hintText').textContent = t; $('#boardHint').hidden = !t; }
@@ -894,6 +1154,7 @@ function stateArrived() {
       drainEvents();
     }
   }
+  if (P && P.ph === 'over' && app.prevP && app.prevP.ph === 'play') setTimeout(() => { confetti(260); sfx.buy(); setTimeout(() => confetti(200), 900); }, 600);
   app.prevP = P;
   if (!EVQ.busy) renderDice(null);
   render();
@@ -908,6 +1169,7 @@ function render(force) {
   renderTop(V);
   const inGame = V && V.ph !== 'lobby' && (myName() || app.mode === 'host');
   document.body.classList.toggle('ingame', !!inGame);
+  updateCamReset();
   $('#boardWrap').hidden = !inGame || !T3.ok && !window.THREE;
   if (inGame && !T3.ok && window.THREE) setupBoard();
   if (T3.ok) placeTokens();
@@ -1226,7 +1488,7 @@ const actions = {
   tradeNo: () => act('tradeNo'),
   tradeCancel: () => act('tradeCancel'),
   newTrade: () => openSheet({ k: 'trade', gc: [], rc: [] }),
-  toggleView: () => { if (T3.busy) return; T3.view = T3.view === 'top' ? 'tilt' : 'top'; animCam(topCam(), 600); closeSheet(); },
+  toggleView: () => { if (T3.busy) return; T3.view = T3.view === 'top' ? 'tilt' : 'top'; ORB.pitch = T3.view === 'top' ? ORB_DEF.pitch : 0.95; animCam(topCam(), 600); closeSheet(); updateCamReset(); },
   hostEnd: (b) => confirmTwice('he', b, 'Точно закончить? Нажми ещё раз', () => { act('hostEnd'); closeSheet(); }),
   newGame: () => act('newGame'),
   sendTrade: () => {

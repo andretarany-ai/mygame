@@ -458,6 +458,7 @@ class Engine {
     g.offer = null;
     this.log(`${n} покупает «${CELLS[c].n}» за ${this.fmt(CELLS[c].p)}`);
     this.ev('buy', { who: n, c, amt: CELLS[c].p });
+    this.groupCheck(n, c);
     this.proceed();
   }
   decline(n) {
@@ -486,6 +487,11 @@ class Engine {
     if (this.g.step !== 'casino' || n !== this.cur()) return;
     this.log(`🎰 ${n} проходит мимо казино`);
     this.proceed();
+  }
+  // Если игрок собрал всю цветную группу — отдельное событие для праздника
+  groupCheck(n, c) {
+    const cell = CELLS[c];
+    if (cell && cell.t === 'prop' && R.ownsGroup(this.state(), n, cell.g)) this.ev('group', { who: n, g: cell.g });
   }
   pass(n) {
     const g = this.g;
@@ -517,6 +523,7 @@ class Engine {
       g.own[a.c] = { o: a.by, h: 0, m: 0 };
       this.log(`${a.by} выигрывает аукцион: «${CELLS[a.c].n}» за ${this.fmt(a.bid)}`);
       this.ev('buy', { who: a.by, c: a.c, amt: a.bid, auc: 1 });
+      this.groupCheck(a.by, a.c);
     } else this.log(`На «${CELLS[a.c].n}» никто не поставил, улица осталась у банка`);
     g.auc = null;
     this.proceed();
@@ -530,7 +537,7 @@ class Engine {
     if (o.h === 4) { this.g.hotels--; this.g.houses += 4; } else this.g.houses--;
     o.h++;
     this.log(`${n} строит ${o.h === 5 ? 'отель' : 'дом'} на «${CELLS[c].n}»`);
-    this.ev('note', { t: `🏗️ ${n} строит ${o.h === 5 ? 'отель' : 'дом'}: ${CELLS[c].s}` });
+    this.ev('build', { who: n, c, h: o.h });
     this.changed();
   }
   sell(n, c) {
@@ -586,11 +593,11 @@ class Engine {
       this.pl[to].jc += p.jc;
       for (const c in g.own) if (g.own[c].o === n) g.own[c].o = to;
       this.log(`${n} банкрот! Всё имущество переходит к ${to}`);
-      this.ev('note', { t: `💥 ${n} банкрот!`, big: 1 });
+      this.ev('bankrupt', { who: n });
     } else {
       for (const c in g.own) if (g.own[c].o === n) delete g.own[c];
       this.log(`${n} банкрот! Улицы возвращаются банку`);
-      this.ev('note', { t: `💥 ${n} банкрот!`, big: 1 });
+      this.ev('bankrupt', { who: n });
     }
     p.money = 0; p.jc = 0; p.out = true;
     g.debts = g.debts.filter((x) => x.who !== n).map((x) => (x.to === n ? { ...x, to: null } : x));
@@ -637,6 +644,8 @@ class Engine {
     for (const c of t.rc) g.own[c].o = t.from;
     this.log(`Сделка между ${t.from} и ${t.to} состоялась`);
     this.ev('note', { t: `🤝 Сделка: ${t.from} и ${t.to}` });
+    for (const c of t.gc) this.groupCheck(t.to, c);
+    for (const c of t.rc) this.groupCheck(t.from, c);
     this.changed();
   }
   tradeCancel(n) {
