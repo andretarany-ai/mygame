@@ -66,6 +66,23 @@ h2 { font-family: var(--display); font-weight: 400; font-size: 20px; margin: 0; 
 .die { width: 34px; height: 34px; border-radius: 8px; background: #fff; color: #111; display: grid; place-items: center; font-family: var(--display); font-size: 20px; box-shadow: 0 3px 0 #0006; }
 .die.roll { animation: roll .5s ease-out; }
 @keyframes roll { 0% { transform: rotate(-200deg) scale(.6); } 100% { transform: none; } }
+#banner { position: absolute; left: 50%; top: 18%; transform: translateX(-50%); background: #000c; color: #fff; padding: 10px 16px; border-radius: 14px; font-weight: 800; font-size: 16px; text-align: center; max-width: 90%; pointer-events: none; animation: pop .35s ease-out; z-index: 3; }
+#banner.big { font-size: 22px; top: 40%; }
+#banner .plus { color: #6ef0a3; } #banner .minus { color: #ff8e93; }
+@keyframes pop { 0% { transform: translateX(-50%) scale(.6); opacity: 0; } 100% { transform: translateX(-50%) scale(1); opacity: 1; } }
+#cardFly { position: absolute; inset: 0; z-index: 4; perspective: 900px; background: #0006; animation: fade .3s; }
+@keyframes fade { from { background: #0000; } }
+#cardFly .cf-inner { position: absolute; width: 72%; aspect-ratio: 1.45; left: 14%; top: 50%; transform-style: preserve-3d; transition: transform .9s cubic-bezier(.2,.8,.2,1), left .9s, top .9s, width .9s; }
+#cardFly .cf-back, #cardFly .cf-front { position: absolute; inset: 0; border-radius: 14px; backface-visibility: hidden; -webkit-backface-visibility: hidden; box-shadow: 0 12px 30px #000a; }
+#cardFly .cf-back { display: grid; place-items: center; font-size: 56px; border: 5px solid #fff; }
+#cardFly .cf-front { transform: rotateY(180deg); background: #fffaf0; color: #1b1b1b; padding: 12px 14px; display: grid; grid-template-rows: auto 1fr auto auto; gap: 6px; }
+#cardFly .cf-deck { font-family: var(--display); font-size: 16px; }
+#cardFly .cf-text { font-size: 15px; line-height: 1.35; overflow: auto; }
+#cardFly .cf-who { font-size: 12px; color: #666; }
+#cardFly .cf-ok { background: #1b1b1b; color: #fff; padding: 8px; font-weight: 800; font-size: 14px; }
+.chip.flash-plus { animation: fplus .9s; } .chip.flash-minus { animation: fminus .9s; }
+@keyframes fplus { 30% { background: #1e6b3f; transform: scale(1.06); } }
+@keyframes fminus { 30% { background: #7a1d24; transform: scale(1.06); } }
 #viewBtn { position: absolute; top: 8px; left: 8px; background: #000a; color: #fff; padding: 6px 10px; font-size: 13px; border-radius: 999px; }
 
 main { padding-block: 10px 28px; display: grid; gap: 10px; }
@@ -128,6 +145,8 @@ details { color: var(--muted); } details p { color: var(--fg); line-height: 1.5;
     <div id="dice"></div>
     <button id="viewBtn" type="button">Вид сверху</button>
     <div id="boardHint"><span id="hintText"></span></div>
+    <div id="banner" hidden></div>
+    <div id="cardFly" hidden><div class="cf-inner"><div class="cf-back"></div><div class="cf-front"><div class="cf-deck"></div><div class="cf-text"></div><div class="cf-who"></div><button class="cf-ok" type="button">Дальше</button></div></div></div>
   </div>
   <main id="main"><div class="logo">ИББЕНБЮРЕН</div><p class="sub">Загрузка…</p></main>
 </div>
@@ -148,13 +167,44 @@ const store = {
   del(k) { try { localStorage.removeItem('ib_' + k); } catch (e) { /* без хранилища */ } },
 };
 function toast(m) { const t = $('#toast'); t.textContent = m; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => { t.hidden = true; }, 2600); }
+// ---------- Звуки (включаются после первого нажатия) ----------
+let actx;
+function tone(f, d = 0.12, type = 'sine', vol = 0.12, delay = 0) {
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const t = actx.currentTime + delay, o = actx.createOscillator(), g = actx.createGain();
+    o.type = type; o.frequency.setValueAtTime(f, t);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    o.connect(g).connect(actx.destination); o.start(t); o.stop(t + d + 0.02);
+  } catch (e) { /* без звука */ }
+}
+function noise(d = 0.05, vol = 0.18, delay = 0) {
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const len = Math.floor(actx.sampleRate * d), buf = actx.createBuffer(1, len, actx.sampleRate), ch = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) ch[i] = (Math.random() * 2 - 1) * (1 - i / len);
+    const src = actx.createBufferSource(), g = actx.createGain(), f = actx.createBiquadFilter();
+    f.type = 'bandpass'; f.frequency.value = 1800; g.gain.value = vol;
+    src.buffer = buf; src.connect(f).connect(g).connect(actx.destination); src.start(actx.currentTime + delay);
+  } catch (e) { /* без звука */ }
+}
+const sfx = {
+  dice: () => { for (let i = 0; i < 9; i++) noise(0.04, 0.2, i * 0.13 + Math.random() * 0.05); },
+  thud: () => { tone(110, 0.15, 'triangle', 0.25); noise(0.06, 0.2); },
+  step: () => tone(520 + Math.random() * 60, 0.05, 'triangle', 0.06),
+  coin: () => { tone(988, 0.08, 'square', 0.05); tone(1319, 0.25, 'square', 0.05, 0.08); },
+  buy: () => { tone(660, 0.1, 'triangle', 0.1); tone(880, 0.1, 'triangle', 0.1, 0.1); tone(1320, 0.2, 'triangle', 0.1, 0.2); },
+  card: () => { for (let i = 0; i < 4; i++) noise(0.05, 0.08, i * 0.05); },
+  siren: () => { for (let i = 0; i < 4; i++) tone(i % 2 ? 660 : 880, 0.28, 'sawtooth', 0.05, i * 0.28); },
+  turn: () => { tone(784, 0.12, 'sine', 0.12); tone(1046, 0.2, 'sine', 0.12, 0.13); },
+};
 let wakeLock = null;
 async function keepAwake() { try { wakeLock = await navigator.wakeLock?.request('screen'); } catch (e) { /* нет */ } }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && app.mode) keepAwake(); });
 
 // Публичное состояние → удобный вид
 function view() {
-  const P = app.P;
+  const P = app.shownP || app.P;
   if (!P) return null;
   const pl = {};
   for (const n of PLAYERS) { const a = P.pl[n]; pl[n] = { money: a[0], pos: a[1], jail: !!a[2], jt: a[3], jc: a[4], out: !!a[5], joined: !!a[6], on: !!a[7], peer: a[8] }; }
@@ -191,6 +241,7 @@ function hostAct(peer, k, d, self) {
     case 'jailCard': G.useJailCard(n); break;
     case 'buy': G.buy(n); break;
     case 'decline': G.decline(n); break;
+    case 'pass': G.pass(n); break;
     case 'bid': G.bid(n, d?.v); break;
     case 'end': G.endTurn(n); break;
     case 'build': G.build(n, c); break;
@@ -206,7 +257,7 @@ function hostAct(peer, k, d, self) {
   }
 }
 function onGameChange() {
-  app.P = app.game.pub();
+  app.P = JSON.parse(JSON.stringify(app.game.pub()));
   app.offset = 0;
   store.set('host', { code: app.code, snap: app.game.snapshot(), at: Date.now() });
   app.gameRoom?.presence({ host: 1, s: app.P }).catch((e) => console.warn(e));
@@ -294,7 +345,7 @@ function cellRect(i) {
 }
 const cellCenter = (i) => { const r = cellRect(i); return { x: r.x + r.w / 2 - B3 / 2, z: r.z + r.h / 2 - B3 / 2 }; };
 
-const T3 = { ok: false, busy: false, queue: [], lastMv: 0, tokens: {}, pos: {}, view: 'top' };
+const T3 = { ok: false, busy: false, tokens: {}, animPos: {}, view: 'top' };
 function setupBoard() {
   if (!window.THREE) { $('#viewBtn').hidden = true; return; }
   const wrap = $('#boardWrap');
@@ -487,16 +538,17 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function playMove(mv) {
   const tok = T3.tokens[mv.who];
   if (!tok) return;
-  T3.busy = true; renderPanel(true);
   setHint(`${mv.who} ходит…`);
+  tok.visible = true;
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (mv.kind === 'jump' || reduce || document.visibilityState !== 'visible') {
     const a = tokenSpot(mv.who, mv.from), b = tokenSpot(mv.who, mv.to);
-    await tween(reduce ? 1 : 700, (k) => { tok.position.lerpVectors(a, b, k); tok.position.y = Math.sin(k * Math.PI) * 1.2; });
+    await tween(reduce ? 1 : 800, (k) => { tok.position.lerpVectors(a, b, k); tok.position.y = Math.sin(k * Math.PI) * 1.4; });
   } else {
     const dir = mv.kind === 'back' ? -1 : 1, n = Math.abs(mv.steps);
     let cur = mv.from;
     const curF = fwd(cur, dir);
+    tok.position.copy(tokenSpot(mv.who, cur));
     tok.rotation.y = Math.atan2(curF.x, curF.z);
     await animCam(behindCam(tokenSpot(mv.who, cur), curF), 850);
     for (let s = 0; s < n; s++) {
@@ -506,6 +558,7 @@ async function playMove(mv) {
       const camFrom = { ...camState }, camTo = behindCam(b, f);
       const r0 = tok.rotation.y; let r1 = Math.atan2(f.x, f.z);
       while (r1 - r0 > Math.PI) r1 -= 2 * Math.PI; while (r0 - r1 > Math.PI) r1 += 2 * Math.PI;
+      sfx.step();
       await tween(330, (k) => {
         tok.position.lerpVectors(a, b, k);
         tok.position.y = Math.sin(k * Math.PI) * 0.28;
@@ -516,19 +569,147 @@ async function playMove(mv) {
       cur = nxt;
     }
     setHint(`${mv.who}: ${CELLS[mv.to].n}`);
-    await sleep(700);
-    await animCam(topCam(), 900);
+    await sleep(650);
+    await animCam(topCam(), 850);
   }
   tok.position.copy(tokenSpot(mv.who, mv.to));
-  T3.busy = false;
-  placeTokens();
-  renderPanel(true);
+  T3.animPos[mv.who] = mv.to;
 }
-async function drainMoves() {
-  if (T3.draining) return;
-  T3.draining = true;
-  while (T3.queue.length) await playMove(T3.queue.shift());
-  T3.draining = false;
+
+// ---------- Кубики в 3D ----------
+function dieMaterials() {
+  const pips = { 1: [[.5, .5]], 2: [[.27, .27], [.73, .73]], 3: [[.25, .25], [.5, .5], [.75, .75]], 4: [[.27, .27], [.73, .27], [.27, .73], [.73, .73]],
+    5: [[.27, .27], [.73, .27], [.5, .5], [.27, .73], [.73, .73]], 6: [[.27, .25], [.73, .25], [.27, .5], [.73, .5], [.27, .75], [.73, .75]] };
+  // порядок граней куба: +x, −x, +y, −y, +z, −z
+  return [3, 4, 1, 6, 2, 5].map((v) => {
+    const c = document.createElement('canvas'); c.width = c.height = 128;
+    const x = c.getContext('2d');
+    x.fillStyle = '#fbfbf7'; x.fillRect(0, 0, 128, 128);
+    x.fillStyle = v === 1 ? '#d62828' : '#1b1b1b';
+    for (const [a, b] of pips[v]) { x.beginPath(); x.arc(a * 128, b * 128, v === 1 ? 17 : 12, 0, Math.PI * 2); x.fill(); }
+    const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding;
+    return new THREE.MeshStandardMaterial({ map: t, roughness: .4 });
+  });
+}
+const FACE_UP = { 1: [0, 0, 0], 6: [Math.PI, 0, 0], 3: [0, 0, Math.PI / 2], 4: [0, 0, -Math.PI / 2], 2: [-Math.PI / 2, 0, 0], 5: [Math.PI / 2, 0, 0] };
+async function playDice(e) {
+  if (!T3.dice) {
+    const geo = new THREE.BoxGeometry(0.85, 0.85, 0.85), mats = dieMaterials();
+    T3.dice = [new THREE.Mesh(geo, mats), new THREE.Mesh(geo, mats)];
+    T3.dice.forEach((d) => T3.scene.add(d));
+  }
+  await animCam(topCam(), 300);
+  setHint(`${e.who} бросает кубики…`);
+  sfx.dice();
+  const starts = [new THREE.Vector3(-2.6, 3.2, 2.2), new THREE.Vector3(2.4, 3.6, 2.6)];
+  const ends = [new THREE.Vector3(-0.7, 0.43, 0.2), new THREE.Vector3(0.75, 0.43, -0.3)];
+  const finals = e.d.map((v) => new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.random() * Math.PI * 2).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(...FACE_UP[v]))));
+  const axes = [0, 1].map(() => new THREE.Vector3(Math.random() - .5, Math.random() - .5, Math.random() - .5).normalize());
+  T3.dice.forEach((d) => { d.visible = true; });
+  await tween(1500, (k) => {
+    T3.dice.forEach((d, i) => {
+      const e2 = 1 - Math.pow(1 - k, 3);
+      d.position.lerpVectors(starts[i], ends[i], e2);
+      d.position.y = ends[i].y + Math.abs(Math.cos(k * Math.PI * 2.5)) * (1 - k) * 2.6;
+      const spin = new THREE.Quaternion().setFromAxisAngle(axes[i], (1 - e2) * Math.PI * 7);
+      d.quaternion.copy(finals[i]).multiply(spin);
+    });
+  });
+  sfx.thud();
+  renderDice({ dice: e.d, ph: 'play' }, true);
+  setBanner(`🎲 ${e.d[0]} + ${e.d[1]} = ${e.d[0] + e.d[1]}${e.d[0] === e.d[1] ? ' · дубль!' : ''}`);
+  await sleep(1100);
+  setBanner('');
+  T3.dice.forEach((d) => { d.visible = false; });
+}
+
+// ---------- Карточка «Удача»/«Банк» ----------
+function playCard(e) {
+  return new Promise((resolve) => {
+    const box = $('#cardFly'), inner = box.querySelector('.cf-inner');
+    const list = e.deck === 'luck' ? LUCK : BANK;
+    box.querySelector('.cf-back').style.background = e.deck === 'luck' ? '#f08a1c' : '#1f8a4c';
+    box.querySelector('.cf-back').textContent = e.deck === 'luck' ? '🍀' : '🏦';
+    box.querySelector('.cf-deck').textContent = e.deck === 'luck' ? '🍀 УДАЧА' : '🏦 БАНК';
+    box.querySelector('.cf-deck').style.color = e.deck === 'luck' ? '#c25e00' : '#1d6b3a';
+    box.querySelector('.cf-text').textContent = list[e.i].x;
+    box.querySelector('.cf-who').textContent = 'Карточку тянет: ' + e.who;
+    // старт — маленькая карта на колоде
+    inner.style.transition = 'none';
+    inner.style.width = '20%';
+    inner.style.left = e.deck === 'luck' ? '22%' : '58%';
+    inner.style.top = e.deck === 'luck' ? '24%' : '60%';
+    inner.style.transform = 'rotateY(0deg) rotateZ(-45deg)';
+    box.hidden = false;
+    sfx.card();
+    void inner.offsetWidth;
+    inner.style.transition = '';
+    inner.style.width = '76%'; inner.style.left = '12%'; inner.style.top = '22%';
+    inner.style.transform = 'rotateY(180deg) rotateZ(0deg)';
+    let done = false;
+    const finish = () => { if (done) return; done = true; box.hidden = true; resolve(); };
+    box.querySelector('.cf-ok').onclick = finish;
+    box.onclick = (ev) => { if (ev.target === box) finish(); };
+    setTimeout(finish, 6500);
+  });
+}
+
+// ---------- Сообщения поверх поля ----------
+function setBanner(html, big) {
+  const b = $('#banner');
+  if (!html) { b.hidden = true; return; }
+  b.innerHTML = html; b.className = big ? 'big' : '';
+  b.hidden = false;
+  b.style.animation = 'none'; void b.offsetWidth; b.style.animation = '';
+}
+function flashChip(n, plus) {
+  const el = document.querySelector(`.chip[data-pl="${CSS.escape(n)}"]`);
+  if (!el) return;
+  el.classList.remove('flash-plus', 'flash-minus'); void el.offsetWidth;
+  el.classList.add(plus ? 'flash-plus' : 'flash-minus');
+}
+// Меняем показываемые деньги по ходу анимаций, чтобы цифры совпадали с тем, что видно
+function shownMoney(n, d) { const a = app.shownP?.pl?.[n]; if (a) a[0] += d; renderTop(view()); }
+
+async function playEvent(e) {
+  const S = app.shownP;
+  switch (e.k) {
+    case 'dice': if (T3.ok) await playDice(e); break;
+    case 'move':
+      if (T3.ok) await playMove(e);
+      if (S) S.pl[e.who][1] = e.to;
+      break;
+    case 'card': await playCard(e); break;
+    case 'jail': sfx.siren(); setBanner(`🚔 ${esc(e.who)} отправляется в тюрьму!`, true); await sleep(1300); setBanner(''); break;
+    case 'gain':
+      sfx.coin(); shownMoney(e.who, e.amt); flashChip(e.who, true);
+      setBanner(`${esc(e.who)} <span class="plus">+${e.amt} €</span>${e.why === 'Старт' ? ' за Старт' : ''}`); await sleep(1300); setBanner(''); break;
+    case 'pay':
+      sfx.coin(); shownMoney(e.from, -e.amt); flashChip(e.from, false);
+      if (e.to) { shownMoney(e.to, e.amt); flashChip(e.to, true); }
+      setBanner(`${esc(e.from)} <span class="minus">−${e.amt} €</span>${e.to ? ' → ' + esc(e.to) : ''}${e.why ? ' · ' + esc(e.why) : ''}`); await sleep(1500); setBanner(''); break;
+    case 'buy':
+      sfx.buy(); shownMoney(e.who, -e.amt); flashChip(e.who, false);
+      if (S) { S.own = { ...S.own, [e.c]: { o: e.who, h: 0, m: 0 } }; placeTokens(); }
+      setBanner(`🏷️ ${esc(e.who)} покупает «${esc(CELLS[e.c].n)}»${e.auc ? ' на аукционе' : ''} за ${e.amt} €`); await sleep(1500); setBanner(''); break;
+    case 'note': setBanner(esc(e.t), e.big); await sleep(e.big ? 2000 : 1300); setBanner(''); break;
+  }
+}
+const EVQ = { last: 0, q: [], busy: false, started: false };
+async function drainEvents() {
+  if (EVQ.busy) return;
+  EVQ.busy = true; T3.busy = true;
+  renderPanel(true);
+  while (EVQ.q.length) {
+    try { await playEvent(EVQ.q.shift()); } catch (err) { console.error(err); }
+  }
+  EVQ.busy = false; T3.busy = false;
+  T3.animPos = {};
+  app.shownP = null;
+  setBanner('');
+  render(true);
+  const V = view(), me = myName();
+  if (V && V.ph === 'play' && V.cur === me && V.step === 'roll') { navigator.vibrate?.([80, 60, 80]); sfx.turn(); }
 }
 function placeTokens() {
   const V = view();
@@ -536,7 +717,7 @@ function placeTokens() {
   for (const n of PLAYERS) {
     const t = T3.tokens[n], p = V.pl[n];
     t.visible = V.ph !== 'lobby' && V.order.includes(n) && !p.out;
-    if (!T3.busy) t.position.copy(tokenSpot(n, p.pos));
+    if (!T3.busy) t.position.copy(tokenSpot(n, T3.animPos[n] ?? p.pos));
   }
   // дома, отели и владельцы
   T3.extras.clear();
@@ -562,18 +743,21 @@ function setHint(t) { $('#hintText').textContent = t; $('#boardHint').hidden = !
 // ================= Отрисовка интерфейса =================
 let prevDice = '', prevStep = '';
 function stateArrived() {
-  const V = view();
-  if (V && V.ph !== 'lobby' && !T3.ok && window.THREE) { $('#boardWrap').hidden = false; setupBoard(); }
-  if (V && V.mv && V.mv.id > T3.lastMv) {
-    const first = T3.lastMv === 0 && !app.seenFirst;
-    T3.lastMv = V.mv.id;
-    if (!first && T3.ok) { T3.queue.push(V.mv); drainMoves(); }
+  const P = app.P;
+  if (P && P.ph !== 'lobby' && !T3.ok && window.THREE) { $('#boardWrap').hidden = false; setupBoard(); }
+  const evs = P?.ev || [];
+  if (!EVQ.started) { EVQ.started = true; EVQ.last = evs.length ? evs[evs.length - 1].id : 0; }
+  else {
+    const fresh = evs.filter((e) => e.id > EVQ.last);
+    if (fresh.length) {
+      EVQ.last = fresh[fresh.length - 1].id;
+      if (!EVQ.busy && !app.shownP) app.shownP = JSON.parse(JSON.stringify(app.prevP || P));
+      EVQ.q.push(...fresh);
+      drainEvents();
+    }
   }
-  app.seenFirst = true;
-  if (V) {
-    const dk = V.dice.join() + V.log.length;
-    if (V.dice[0] && dk !== prevDice) { prevDice = dk; renderDice(V, true); } else renderDice(V, false);
-  }
+  app.prevP = P;
+  if (!EVQ.busy) { renderDice(view(), false); }
   render();
 }
 function renderDice(V, anim) {
@@ -724,7 +908,8 @@ function viewGame(V, me) {
     } else if (V.step === 'buy' && V.offer != null) {
       const c = V.offer;
       parts.push(`<div class="panel">${propCardHtml(V, c, false)}
-        ${isMe ? `<div class="two"><button class="btn good" data-a="buy" ${cp.money >= CELLS[c].p ? '' : 'disabled'}>Купить за ${eur(CELLS[c].p)}</button><button class="btn sec" data-a="decline">Аукцион</button></div>
+        ${isMe ? `<button class="btn good" data-a="buy" ${cp.money >= CELLS[c].p ? '' : 'disabled'}>Купить за ${eur(CELLS[c].p)}</button>
+          <div class="two"><button class="btn sec" data-a="decline">🔨 На аукцион</button><button class="btn ghost" data-a="pass">Не покупать</button></div>
           ${cp.money < CELLS[c].p ? '<p class="note">Не хватает денег — можно заложить улицу или отправить на аукцион.</p>' : ''}`
         : `<p class="status">${esc(V.cur)} решает, покупать ли…</p>`}</div>`);
     } else if (V.step === 'roll') {
@@ -876,6 +1061,7 @@ const actions = {
   jailCard: () => act('jailCard'),
   buy: () => act('buy'),
   decline: () => act('decline'),
+  pass: () => act('pass'),
   end: () => act('end'),
   skip: () => act('skip'),
   payDebt: () => act('payDebt'),

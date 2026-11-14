@@ -214,7 +214,7 @@ class Engine {
         joined: !!old?.[n]?.joined, on: !!old?.[n]?.on, peer: old?.[n]?.peer ?? null };
     }
     this.g = { ph: 'lobby', order: [], turn: 0, step: 'roll', dice: [0, 0], dbl: 0, again: false, landPending: false, rentMult: 1,
-      mv: null, mvId: 0, own: {}, offer: null, auc: null, debts: [], card: null, cardId: 0, trade: null, tradeId: 0,
+      ev: [], evId: 0, own: {}, offer: null, auc: null, debts: [], card: null, cardId: 0, trade: null, tradeId: 0,
       log: [], houses: 32, hotels: 12, rank: null };
     this.decks = { luck: shuffled(LUCK.length), bank: shuffled(BANK.length) };
     this.rq = this.rq || [];
@@ -223,6 +223,8 @@ class Engine {
   changed() { this.onChange && this.onChange(); }
   state() { return { own: this.g.own, pl: this.pl, houses: this.g.houses, hotels: this.g.hotels }; }
   log(t) { this.g.log.push(t); if (this.g.log.length > 30) this.g.log.shift(); }
+  // События для анимаций на телефонах: проигрываются по очереди
+  ev(k, d) { const g = this.g; g.ev.push({ id: ++g.evId, k, ...d }); if (g.ev.length > 30) g.ev.shift(); }
   cur() { return this.g.order[this.g.turn]; }
   alive() { return this.g.order.filter((n) => !this.pl[n].out); }
   fmt(v) { return v + ' €'; }
@@ -280,6 +282,7 @@ class Engine {
     const a = d6(), b = d6(), dbl = a === b;
     g.dice = [a, b];
     g.card = null;
+    this.ev('dice', { who: n, d: [a, b] });
     this.log(`${n} бросает ${a} и ${b}${dbl ? ' — дубль!' : ''}`);
     if (p.jail) {
       if (dbl) {
@@ -334,14 +337,15 @@ class Engine {
   move(n, steps, kind = 'walk') {
     const p = this.pl[n], from = p.pos;
     const to = ((from + steps) % 40 + 40) % 40;
-    if (steps > 0 && from + steps >= 40) { p.money += SALARY; this.log(`${n} проходит Старт: +${this.fmt(SALARY)}`); }
     p.pos = to;
-    this.g.mv = { id: ++this.g.mvId, who: n, from, steps, to, kind };
+    this.ev('move', { who: n, from, steps, to, kind });
+    if (steps > 0 && from + steps >= 40) { p.money += SALARY; this.log(`${n} проходит Старт: +${this.fmt(SALARY)}`); this.ev('gain', { who: n, amt: SALARY, why: 'Старт' }); }
   }
   moveTo(n, target) { this.move(n, (target - this.pl[n].pos + 40) % 40 || 40); }
   sendJail(n) {
     const p = this.pl[n], g = this.g;
-    g.mv = { id: ++g.mvId, who: n, from: p.pos, steps: 0, to: JAIL, kind: 'jump' };
+    this.ev('jail', { who: n });
+    this.ev('move', { who: n, from: p.pos, steps: 0, to: JAIL, kind: 'jump' });
     p.pos = JAIL; p.jail = true; p.jt = 0;
     g.again = false; g.dbl = 0; g.landPending = false;
   }
@@ -369,6 +373,7 @@ class Engine {
       const i = this.decks[deck].shift(); this.decks[deck].push(i);
       const card = list[i];
       g.card = { id: ++g.cardId, deck, i, who: n };
+      this.ev('card', { who: n, deck, i });
       this.log(`${n} тянет «${deck === 'luck' ? 'Удачу' : 'Банк'}»`);
       this.applyCard(n, card);
     }
@@ -377,11 +382,11 @@ class Engine {
   applyCard(n, k) {
     const g = this.g, p = this.pl[n];
     switch (k.k) {
-      case 'money': if (k.v >= 0) p.money += k.v; else this.charge(n, null, -k.v, 'карточка'); break;
+      case 'money': if (k.v >= 0) { p.money += k.v; this.ev('gain', { who: n, amt: k.v, why: 'карточка' }); } else this.charge(n, null, -k.v, 'карточка'); break;
+      case 'jcard': p.jc += 1; this.ev('note', { t: `${n} получает карту «Выйти из тюрьмы»` }); break;
       case 'goto': this.moveTo(n, k.c); g.landPending = true; break;
       case 'back': this.move(n, -k.v, 'back'); g.landPending = true; break;
       case 'jail': this.sendJail(n); break;
-      case 'jcard': p.jc += 1; break;
       case 'payEach': for (const o of this.alive()) if (o !== n) this.charge(n, o, k.v, 'карточка'); break;
       case 'collectEach': for (const o of this.alive()) if (o !== n) this.charge(o, n, k.v, 'подарок'); break;
       case 'repairs': {
@@ -404,8 +409,10 @@ class Engine {
     if (p.money >= amt && !this.g.debts.some((d) => d.who === from)) {
       p.money -= amt;
       if (to) this.pl[to].money += amt;
+      this.ev('pay', { from, to, amt, why });
     } else {
       this.g.debts.push({ who: from, to, amt, why });
+      this.ev('note', { t: `${from}: не хватает ${amt} €!` });
       this.log(`${from} не хватает денег: должен ${this.fmt(amt)}${to ? ' игроку ' + to : ' банку'}`);
     }
   }
@@ -442,6 +449,7 @@ class Engine {
     g.own[c] = { o: n, h: 0, m: 0 };
     g.offer = null;
     this.log(`${n} покупает «${CELLS[c].n}» за ${this.fmt(CELLS[c].p)}`);
+    this.ev('buy', { who: n, c, amt: CELLS[c].p });
     this.proceed();
   }
   decline(n) {
@@ -451,6 +459,14 @@ class Engine {
     g.offer = null;
     this.log(`«${CELLS[g.auc.c].n}» уходит на аукцион`);
     this.armAuction();
+    this.proceed();
+  }
+  pass(n) {
+    const g = this.g;
+    if (g.step !== 'buy' || n !== this.cur() || g.offer == null) return;
+    this.log(`${n} не покупает «${CELLS[g.offer].n}»`);
+    this.ev('note', { t: `${n} не покупает «${CELLS[g.offer].n}»` });
+    g.offer = null;
     this.proceed();
   }
   armAuction() {
@@ -474,6 +490,7 @@ class Engine {
       this.pl[a.by].money -= a.bid;
       g.own[a.c] = { o: a.by, h: 0, m: 0 };
       this.log(`${a.by} выигрывает аукцион: «${CELLS[a.c].n}» за ${this.fmt(a.bid)}`);
+      this.ev('buy', { who: a.by, c: a.c, amt: a.bid, auc: 1 });
     } else this.log(`На «${CELLS[a.c].n}» никто не поставил, улица осталась у банка`);
     g.auc = null;
     this.proceed();
@@ -487,6 +504,7 @@ class Engine {
     if (o.h === 4) { this.g.hotels--; this.g.houses += 4; } else this.g.houses--;
     o.h++;
     this.log(`${n} строит ${o.h === 5 ? 'отель' : 'дом'} на «${CELLS[c].n}»`);
+    this.ev('note', { t: `🏗️ ${n} строит ${o.h === 5 ? 'отель' : 'дом'}: ${CELLS[c].s}` });
     this.changed();
   }
   sell(n, c) {
@@ -521,6 +539,7 @@ class Engine {
     this.pl[n].money -= d.amt;
     if (d.to) this.pl[d.to].money += d.amt;
     this.log(`${n} гасит долг ${this.fmt(d.amt)}`);
+    this.ev('pay', { from: n, to: d.to, amt: d.amt, why: 'долг' });
     g.debts.shift();
     this.proceed();
   }
@@ -541,9 +560,11 @@ class Engine {
       this.pl[to].jc += p.jc;
       for (const c in g.own) if (g.own[c].o === n) g.own[c].o = to;
       this.log(`${n} банкрот! Всё имущество переходит к ${to}`);
+      this.ev('note', { t: `💥 ${n} банкрот!`, big: 1 });
     } else {
       for (const c in g.own) if (g.own[c].o === n) delete g.own[c];
       this.log(`${n} банкрот! Улицы возвращаются банку`);
+      this.ev('note', { t: `💥 ${n} банкрот!`, big: 1 });
     }
     p.money = 0; p.jc = 0; p.out = true;
     g.debts = g.debts.filter((x) => x.who !== n).map((x) => (x.to === n ? { ...x, to: null } : x));
@@ -589,6 +610,7 @@ class Engine {
     for (const c of t.gc) g.own[c].o = t.to;
     for (const c of t.rc) g.own[c].o = t.from;
     this.log(`Сделка между ${t.from} и ${t.to} состоялась`);
+    this.ev('note', { t: `🤝 Сделка: ${t.from} и ${t.to}` });
     this.changed();
   }
   tradeCancel(n) {
@@ -612,6 +634,7 @@ class Engine {
   snapshot() { return { pl: this.pl, g: this.g, decks: this.decks, ok: this.ok }; }
   restore(s) {
     this.pl = s.pl; this.g = s.g; this.decks = s.decks; this.ok = s.ok || {}; this.rq = [];
+    this.g.ev = this.g.ev || []; this.g.evId = this.g.evId || 0;
     for (const n of PLAYERS) this.pl[n].on = false;
     if (this.g.auc) setTimeout(() => this.armAuction(), 0);
   }
@@ -619,7 +642,7 @@ class Engine {
     const pl = {};
     for (const n of PLAYERS) { const p = this.pl[n]; pl[n] = [p.money, p.pos, p.jail ? 1 : 0, p.jt, p.jc, p.out ? 1 : 0, p.joined ? 1 : 0, p.on ? 1 : 0, p.peer]; }
     const g = this.g;
-    return { now: Date.now(), rq: this.rq, pl, ph: g.ph, order: g.order, turn: g.turn, step: g.step, dice: g.dice, dbl: g.dbl, mv: g.mv,
+    return { now: Date.now(), rq: this.rq, pl, ph: g.ph, order: g.order, turn: g.turn, step: g.step, dice: g.dice, dbl: g.dbl, ev: g.ev,
       own: g.own, offer: g.offer, auc: g.auc, debts: g.debts, card: g.card, trade: g.trade, log: g.log.slice(-12),
       houses: g.houses, hotels: g.hotels, rank: g.rank };
   }
