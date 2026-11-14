@@ -115,6 +115,18 @@ h2 { font-family: var(--display); font-weight: 400; font-size: 22px; text-align:
 .att.ok { border-left-color: var(--good); }
 .att .why { color: var(--muted); font-size: 13px; text-align: right; }
 .correct { background: var(--good); color: var(--good-ink); padding: 14px; border-radius: 12px; text-align: center; font-size: 21px; font-weight: 800; }
+.pic { font-size: 76px; line-height: 1.15; text-align: center; padding-block: 4px 12px; letter-spacing: 6px; }
+.edit-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; background: #0005; padding: 10px; border-radius: 10px; }
+.edit-row .nm { font-weight: 800; }
+.edit-row .sc { font-family: var(--display); font-size: 20px; font-variant-numeric: tabular-nums; text-align: right; }
+.edit-btns { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+#scoreEdit .edit-btns button { padding: 10px 0; background: var(--cell); font-weight: 800; }
+#scoreEdit .edit-btns button.minus { background: #6b1d27; }
+.edit-set { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr auto; gap: 6px; }
+.edit-set input { font-size: 17px; padding: 10px; }
+#scoreEdit .edit-set button { padding: 0 14px; background: var(--gold); color: var(--ink); font-weight: 800; }
+#scoreEdit { position: fixed; inset: 0; background: #000b; display: flex; align-items: center; justify-content: center; z-index: 11; padding: 16px; overflow-y: auto; }
+#scoreEdit .menu-box { max-height: 100%; overflow-y: auto; }
 .cat { font-size: 64px; text-align: center; line-height: 1; }
 .res { background: var(--bg2); border-radius: 10px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; font-size: 18px; }
 .res b { font-family: var(--display); font-weight: 400; font-variant-numeric: tabular-nums; }
@@ -146,17 +158,20 @@ summary { cursor: pointer; text-align: center; }
 <div id="menu" hidden>
   <div class="menu-box">
     <div id="menuWho" class="sub"></div>
+    <button data-m="scores" id="scoresBtn">Изменить баллы</button>
     <button data-m="skipRound">Пропустить остаток раунда</button>
     <button data-m="exit">Выйти в главное меню</button>
     <button data-m="abort" class="danger">Начать игру заново (лобби)</button>
     <button data-m="close" class="ghost">Закрыть</button>
   </div>
 </div>
+<div id="scoreEdit" hidden><div class="menu-box" id="scoreEditBox"></div></div>
 <div id="toast" hidden></div>
 
 <script>
 const DATA = /*__QUESTIONS__*/null;
 const NAMES = ['Марина', 'Даша', 'Андрей', 'Сережа'];
+const SCORE_EDITOR = 'Андрей'; // этот игрок может менять баллы всем
 const COLORS = ['var(--p1)', 'var(--p2)', 'var(--p3)', 'var(--p4)'];
 const T = { roundIntro: 4000, cat: 20000, buzz: 10000, answer: 25000, reveal: 5000, finalStake: 30000, finalAnswer: 45000, buzzWindow: 220 };
 const readTime = (t) => Math.min(8000, 2000 + t.length * 45);
@@ -169,16 +184,7 @@ const store = {
 };
 
 // ================= Проверка ответа =================
-function normalize(s) {
-  return String(s).toLowerCase().replace(/ё/g, 'е').replace(/[«»"'`.,!?;:()]/g, '').replace(/[-–—]/g, ' ').replace(/\s+/g, ' ').trim();
-}
-function checkAnswer(raw, q) {
-  const text = String(raw || '').trim();
-  if (!text) return { ok: false, reason: 'Нет ответа' };
-  const first = text[0];
-  if (/\p{L}/u.test(first) && first !== first.toUpperCase()) return { ok: false, reason: 'Нужно с большой буквы' };
-  return [q.a, ...(q.alt || [])].map(normalize).includes(normalize(text)) ? { ok: true } : { ok: false, reason: 'Неверно' };
-}
+/*__CHECK__*/
 
 // ================= Движок игры (работает у ведущего) =================
 class Game {
@@ -224,6 +230,16 @@ class Game {
     Object.assign(p, { joined: true, on: true, peer });
     this.changed();
     return null;
+  }
+  adjust(name, delta) {
+    if (!this.pl[name] || !Number.isFinite(delta)) return;
+    this.pl[name].score = Math.max(-999999, Math.min(999999, this.pl[name].score + Math.round(delta)));
+    this.changed();
+  }
+  setScore(name, value) {
+    if (!this.pl[name] || !Number.isFinite(value)) return;
+    this.pl[name].score = Math.max(-999999, Math.min(999999, Math.round(value)));
+    this.changed();
   }
   approve(peer, yes) {
     const r = this.rq.find((x) => x[1] === peer);
@@ -468,6 +484,8 @@ function hostAct(peer, k, d, self) {
     case 'stake': G.stake(name, d.a); break;
     case 'fans': G.fanswer(name, d.text); break;
     case 'skip': G.skipRound(); break;
+    case 'adjust': if (name === SCORE_EDITOR || app.mode === 'local') G.adjust(String(d.name), Number(d.delta)); break;
+    case 'setScore': if (name === SCORE_EDITOR || app.mode === 'local') G.setScore(String(d.name), Number(d.value)); break;
     case 'new': if (G.g.ph === 'gameover' || G.g.ph === 'lobby') G.reset(false), G.changed(); break;
     case 'abort': if (self) { G.reset(false); G.changed(); } break;
   }
@@ -631,6 +649,7 @@ function renderScores() {
 
 function render(force) {
   renderScores();
+  renderScoreEdit();
   const P = app.P;
   let key, view;
   if (!app.mode) { key = 'menu' + !!app.room; view = viewMenu; }
@@ -721,7 +740,7 @@ function viewMenu() {
     </div>`;
   return `
     <div class="logo">МОЯ ИГРА</div>
-    <p class="sub">Школьная викторина · 3 раунда и финал</p>
+    <p class="sub">Викторина для взрослых · Украина, бренды, 18+ · 3 раунда и финал</p>
     ${online}
     <div class="panel">
       <h2>Один телефон на всех</h2>
@@ -735,7 +754,7 @@ function viewMenu() {
 function rulesHtml() {
   return `<details><summary>Правила</summary><p>
     Выбирающий открывает вопрос на табло. Пока вопрос читается, кнопка заблокирована. Потом загорается красная кнопка:
-    кто нажал первым, тот и отвечает. Ответ <b>вписывается с большой буквы и без ошибок</b>.
+    кто нажал первым, тот и отвечает. Ответ вписывается: большие и маленькие буквы не важны, мелкие опечатки прощаются, можно писать часть ответа («Кит» вместо «Синий кит»).
     Верно: плюс стоимость вопроса и право выбора. Неверно: минус стоимость, и остальные могут нажать снова.
     В каждом раунде спрятан «Кот в мешке»: его отдают сопернику, и тот обязан ответить.
     Со 2-го раунда первым выбирает игрок с наименьшим счётом.
@@ -834,9 +853,9 @@ function attemptsHtml(c) {
 function answerBox(label) {
   return `<div class="stack">
     <div class="status">${label} (<span data-secs></span> с)</div>
-    <input id="ans" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="С большой буквы…" maxlength="60" enterkeyhint="send">
+    <input id="ans" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Твой ответ…" maxlength="60" enterkeyhint="send">
     <button class="btn" data-a="send">Ответить</button>
-    <div class="hint">Пиши с большой буквы и без ошибок</div></div>`;
+    <div class="hint">Регистр не важен, мелкие опечатки прощаются</div></div>`;
 }
 
 function viewQuestion() {
@@ -860,6 +879,7 @@ function viewQuestion() {
     action = `<div class="status">${win ? `🎉 ${esc(win[0])} +${c.v}` : 'Никто не ответил верно'}</div><div class="correct">Правильный ответ: ${esc(q.a)}</div>`;
   }
   return `<div class="qcard"><div class="qhead"><span>${c.cat ? '🐱 ' : ''}${esc(r.themes[c.ti].name)}</span><span class="v">${c.v}</span></div>
+    ${q.pic ? `<div class="pic" role="img" aria-label="Картинка к вопросу">${esc(q.pic)}</div>` : ''}
     <div class="qtext">${esc(q.q)}</div></div>${action}${attemptsHtml(c)}`;
 }
 
@@ -887,7 +907,7 @@ function viewFinalAnswer() {
   const can = who && f.el.includes(who) && !f.an.includes(who);
   return `<div class="qcard"><div class="qhead"><span>ФИНАЛ · ${esc(fq.theme)}</span><span class="v" data-secs></span></div><div class="qtext">${esc(fq.q)}</div></div>
     ${can ? `<div class="stack">${app.mode === 'local' ? `<div class="status">Пишет <b>${esc(who)}</b>, остальные не подглядывают</div>` : ''}
-      <input id="fans" type="${app.mode === 'local' ? 'password' : 'text'}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="С большой буквы…" maxlength="60">
+      <input id="fans" type="${app.mode === 'local' ? 'password' : 'text'}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Твой ответ…" maxlength="60">
       <button class="btn" data-a="fans" data-who="${esc(who)}">Отправить ответ</button>
       <div class="hint">Ответ можно отправить только один раз</div></div>` : ''}
     ${app.mode !== 'local' && f.an.includes(who) ? '<p class="status">Ответ принят. Ждём остальных…</p>' : ''}
@@ -978,13 +998,51 @@ function actions_buzz() { act('buzz', { rt: Math.round(performance.now() - app.p
 // ---------- Меню ----------
 $('#menuBtn').onclick = () => {
   $('#menuWho').textContent = !app.mode ? 'Главное меню' : app.mode === 'local' ? 'Один телефон на всех' : (myName() ? 'Ты: ' + myName() : 'Онлайн') + (app.code ? ' · игра ' + app.code : '');
+  $('#scoresBtn').hidden = !canEditScores();
   $('#menu').hidden = false;
+};
+function canEditScores() { return !!app.P && (app.mode === 'local' || myName() === SCORE_EDITOR); }
+function renderScoreEdit() {
+  const box = $('#scoreEditBox');
+  if ($('#scoreEdit').hidden || !app.P) return;
+  const keepId = document.activeElement?.id, keepVal = keepId ? document.getElementById(keepId)?.value : null;
+  box.innerHTML = `<h2>Баллы игроков</h2>
+    ${players().filter((p) => p.joined).map((p, i) => `
+      <div class="edit-row">
+        <span class="nm">${esc(p.name)}</span><span class="sc">${p.score}</span>
+        <div class="edit-btns">
+          <button class="minus" data-adj="${esc(p.name)}" data-d="-500">−500</button>
+          <button class="minus" data-adj="${esc(p.name)}" data-d="-100">−100</button>
+          <button data-adj="${esc(p.name)}" data-d="100">+100</button>
+          <button data-adj="${esc(p.name)}" data-d="500">+500</button>
+        </div>
+        <div class="edit-set"><input id="set${i}" type="number" inputmode="numeric" placeholder="Точное число"><button data-set="${esc(p.name)}" data-inp="set${i}">Поставить</button></div>
+      </div>`).join('') || '<p class="sub">Пока нет игроков</p>'}
+    <button class="ghost" data-close="1">Готово</button>`;
+  if (keepId && document.getElementById(keepId)) { const el = document.getElementById(keepId); el.value = keepVal || ''; el.focus(); }
+}
+$('#scoreEdit').onclick = (e) => {
+  const t = e.target;
+  if (t.id === 'scoreEdit' || t.dataset.close) { $('#scoreEdit').hidden = true; return; }
+  if (t.dataset.adj) act('adjust', { name: t.dataset.adj, delta: Number(t.dataset.d) });
+  if (t.dataset.set) {
+    const v = document.getElementById(t.dataset.inp).value;
+    if (v === '' || !Number.isFinite(Number(v))) return toast('Впиши число');
+    document.getElementById(t.dataset.inp).value = '';
+    act('setScore', { name: t.dataset.set, value: Number(v) });
+  }
 };
 let abortArmed = false;
 $('#menu').onclick = (e) => {
   const m = e.target.dataset?.m;
   if (e.target.id === 'menu' || m === 'close') { $('#menu').hidden = true; return; }
   if (!m) return;
+  if (m === 'scores') {
+    $('#menu').hidden = true;
+    $('#scoreEdit').hidden = false;
+    renderScoreEdit();
+    return;
+  }
   if (m === 'skipRound') {
     if (app.P?.ph !== 'board') return toast('Можно, когда открыто табло');
     act('skip', { who: app.P.ch });

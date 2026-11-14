@@ -167,7 +167,7 @@ function show(key, fn) {
 function viewChoose() {
   return `
     <h1>МОЯ ИГРА</h1>
-    <p class="sub">Школьная викторина. Кто ты?</p>
+    <p class="sub">Викторина для взрослых. Кто ты?</p>
     <div class="pick-grid">
       ${S.players.map((p) => `<button data-join="${esc(p.name)}" class="${p.connected ? 'taken' : ''}">${esc(p.name)}${p.connected ? '<br><small>в игре</small>' : ''}</button>`).join('')}
     </div>
@@ -178,7 +178,7 @@ function viewLobby() {
   const joined = S.players.filter((p) => p.joined && p.connected);
   return `
     <h1>МОЯ ИГРА</h1>
-    <p class="sub">Школьные вопросы · ${S.totalRounds} раунда + финал</p>
+    <p class="sub">Викторина для взрослых · ${S.totalRounds} раунда + финал</p>
     <div class="lobby-list">
       ${S.players.map((p) => `<div><span>${esc(p.name)}</span><span>${p.connected ? '✅ на месте' : '⏳ ждём'}</span></div>`).join('')}
     </div>
@@ -187,7 +187,7 @@ function viewLobby() {
       <summary>Правила</summary>
       <p style="text-align:left">
         Выбирающий открывает вопрос на табло. Когда вопрос прочитан, загорается красная кнопка —
-        кто нажал первым, тот и отвечает. Ответ <b>вписывается с большой буквы и без ошибок</b>.
+        кто нажал первым, тот и отвечает. Ответ вписывается: регистр не важен, мелкие опечатки прощаются, можно часть ответа.
         Верно — плюс стоимость вопроса и право выбора; неверно — минус стоимость, а остальные могут попробовать.
         В каждом раунде спрятан «Кот в мешке» 🐱 — его отдают сопернику, и тот обязан ответить.
         Со 2‑го раунда первым выбирает игрок с наименьшим счётом.
@@ -269,9 +269,9 @@ function viewQuestion() {
       action = `
         <div class="answer-box">
           <div class="status">✍️ Твой ответ! (<span data-secs></span> с)</div>
-          <input id="ans" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="С большой буквы…" maxlength="100">
+          <input id="ans" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Твой ответ…" maxlength="100">
           <button class="btn" data-act="send">Ответить</button>
-          <div class="hint">Пиши с большой буквы и без ошибок</div>
+          <div class="hint">Регистр не важен, мелкие опечатки прощаются</div>
         </div>`;
     } else {
       action = `<p class="status">✍️ Отвечает <b>${esc(c.answerer)}</b>… (<span data-secs></span>)</p>`;
@@ -285,6 +285,7 @@ function viewQuestion() {
   return `
     <div class="qcard">
       <div class="qhead"><span>${c.cat ? '🐱 ' : ''}${esc(c.theme)}</span><span>${c.value}</span></div>
+      ${c.pic ? `<div class="pic">${esc(c.pic)}</div>` : ''}
       <div class="qtext">${esc(c.text)}</div>
     </div>
     ${action}
@@ -324,7 +325,7 @@ function viewFinalAnswer() {
     </div>
     ${inFinal && !done ? `
       <div class="answer-box">
-        <input id="fans" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="С большой буквы…" maxlength="100">
+        <input id="fans" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Твой ответ…" maxlength="100">
         <button class="btn" data-act="fans">Отправить ответ</button>
         <div class="hint">Ответ можно отправить только один раз</div>
       </div>` : ''}

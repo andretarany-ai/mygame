@@ -6,7 +6,8 @@ const path = require('path');
 const { rounds, finals } = require('../questions');
 
 const tpl = fs.readFileSync(path.join(__dirname, 'template.html'), 'utf8')
-  .replace('/*__QUESTIONS__*/null', JSON.stringify({ rounds, finals }));
+  .replace('/*__QUESTIONS__*/null', () => JSON.stringify({ rounds, finals }))
+  .replace('/*__CHECK__*/', () => fs.readFileSync(path.join(__dirname, '..', 'answer-check.js'), 'utf8'));
 
 fs.writeFileSync(path.join(__dirname, 'moya-igra.html'), tpl);
 

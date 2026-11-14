@@ -27,28 +27,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 const server = http.createServer(app);
 const io = new Server(server);
 
-// ---------- Проверка ответа ----------
-function normalize(s) {
-  return String(s)
-    .toLowerCase()
-    .replace(/ё/g, 'е')
-    .replace(/[«»"'`.,!?;:()]/g, '')
-    .replace(/[-–—]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function checkAnswer(raw, q) {
-  const text = String(raw || '').trim();
-  if (!text) return { ok: false, reason: 'Нет ответа' };
-  const first = text[0];
-  if (/\p{L}/u.test(first) && first !== first.toUpperCase()) {
-    return { ok: false, reason: 'Ответ должен начинаться с большой буквы' };
-  }
-  const variants = [q.a, ...(q.alt || [])].map(normalize);
-  if (variants.includes(normalize(text))) return { ok: true };
-  return { ok: false, reason: 'Неверно' };
-}
+const { checkAnswer, normalizeAnswer: normalize } = require('./answer-check');
 
 // ---------- Состояние ----------
 let players; // name -> { score, clientId, socketId, connected }
@@ -298,6 +277,7 @@ function publicState() {
     out.cur = {
       theme: c.theme, value: c.value, cat: c.cat, catTarget: c.catTarget,
       text: showQ ? c.q.q : null,
+      pic: showQ ? c.q.pic || null : null,
       answerer: c.answerer, tried: c.tried, attempts: c.attempts, result: c.result,
       answer: s.phase === 'reveal' ? c.q.a : null,
     };
