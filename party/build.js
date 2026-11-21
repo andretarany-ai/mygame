@@ -8,6 +8,7 @@ const GAMES = [
   { mode: 'who', dir: 'kto', title: 'Кто из нас?', acc: '#ffc93c' },
   { mode: 'funny', dir: 'otvet', title: 'Смешной ответ', acc: '#ff7a59' },
   { mode: 'draw', dir: 'risunok', title: 'Испорченный рисунок', acc: '#29d3c2' },
+  { mode: 'idea', dir: 'zagadal', title: 'Угадай, кто загадал', acc: '#c77dff' },
 ];
 for (const g of GAMES) {
   const tpl = read('template.html')

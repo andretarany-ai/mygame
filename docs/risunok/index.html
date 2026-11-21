@@ -343,6 +343,17 @@ const DRAW_W = [
   'Карусель ужаса', 'Свадебный торт упал', 'Глухой телефон', 'Вечеринка в пижамах', 'Пингвин-официант', 'Обезьяна с селфи-палкой',
 ];
 
+const IDEA_T = [
+  'Если бы Марина была суперзлодейкой', 'Андрей в роли супергероя', 'Даша — королева Иббенбюрена', 'Сережа на необитаемом острове',
+  'Наша компания через 20 лет', 'Иббенбюрен в 3000 году', 'Новый аттракцион на Кирмесе', 'Что на самом деле происходит на складе Fiege',
+  'Идеальное свидание Даши и Андрея', 'Худшее свидание Марины и Сережи', 'Обложка альбома нашей рок-группы', 'Самый безумный бизнес Андрея',
+  'Самый странный сон после вечеринки', 'Животное, которым был бы каждый из нас', 'Свадьба мечты в стиле фильма ужасов',
+  'Отпуск, который пошёл не так', 'Bratwurst фургон из будущего', 'Барбершоп у Джавида на Марсе', 'Если бы зассанный каток стал курортом',
+  'Тайная жизнь кота ночью', 'Реклама электрических стелек', 'Мальчишник, о котором никто не должен узнать', 'Девичник в стиле Средневековья',
+  'Мем про нашу компанию', 'Утро после Экстраблатта', 'Казино, где ставят не деньги', 'Наш общий дом через 10 лет',
+  'Новая олимпийская дисциплина', 'Самый неловкий момент на работе', 'Если бы ДБ ходил вовремя', 'Битва Rewe против Netto',
+];
+
 // ---------- Случай ----------
 function rnd(n) {
   const c = (typeof crypto !== 'undefined' && crypto.getRandomValues) ? crypto : require('crypto').webcrypto;
@@ -353,7 +364,7 @@ function rnd(n) {
 function shuffle(arr) { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = rnd(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 const pick = (arr, n) => shuffle(arr).slice(0, n);
 
-const T = { whoVote: 25000, funnyWrite: 60000, funnyVote: 30000, drawTime: 180000, descTime: 60000, grace: 2500 };
+const T = { whoVote: 25000, funnyWrite: 60000, funnyVote: 30000, drawTime: 180000, descTime: 60000, ideaWrite: 75000, ideaGen: 90000, ideaGuess: 60000, grace: 2500 };
 const cleanText = (t, max = 120) => String(t ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
 
 // Рисунок: [{c: 'цвет', w: толщина, p: [x,y,x,y…]}], координаты 0…1000. Проверяем и ограничиваем размер.
@@ -437,6 +448,7 @@ class Party {
     if (this.mode === 'who') this.whoStart();
     if (this.mode === 'funny') this.funnyStart();
     if (this.mode === 'draw') this.drawStart();
+    if (this.mode === 'idea') this.ideaStart();
   }
   toLobby() { clearTimeout(this.timer); Object.assign(this.g, { ph: 'lobby', step: null, dl: null, w: null, f: null, d: null }); this.changed(); }
   // Все, кто на связи, уже сделали ход — не ждём таймер
@@ -447,6 +459,12 @@ class Party {
       const f = this.g.f;
       if (this.g.step === 'write' && this.online().every((n) => f.answers[n] != null)) this.funnyToVote();
       else if (this.g.step === 'vote' && this.online().every((n) => f.votes[n] || !this.funnyCanVote(n))) this.funnyReveal();
+    }
+    if (this.mode === 'idea') {
+      const i = this.g.i;
+      if (this.g.step === 'write' && this.online().every((n) => i.ideas[n] != null)) this.ideaToGen();
+      else if (this.g.step === 'gen' && i.order.every((a) => i.imgs[a])) this.ideaToGuess();
+      else if (this.g.step === 'guess' && this.online().every((n) => i.sent[n] || !i.order.some((a) => a !== n))) this.ideaReveal();
     }
     if (this.mode === 'draw' && ['s1', 's2', 's3', 's4'].includes(this.g.step)) {
       const d = this.g.d, s = Number(this.g.step[1]);
@@ -627,6 +645,108 @@ class Party {
     this.changed();
   }
 
+  // ================= «Угадай, кто загадал» =================
+  // Каждый пишет описание картинки → хост заказывает картинки → все угадывают авторов → показ.
+  ideaStart() {
+    const count = Number(this.g.opt.rounds) || 3;
+    this.g.i = { ts: pick(IDEA_T.map((_, k) => k), count), r: 0 };
+    this.ideaAsk();
+  }
+  ideaKey() { return 'i' + this.g.i.r; }
+  ideaAsk() {
+    const g = this.g;
+    Object.assign(g.i, { ideas: {}, imgs: {}, order: [], guesses: {}, sent: {}, likes: {}, res: null });
+    g.step = 'write';
+    this.setTimer(T.ideaWrite, () => this.ideaToGen());
+    this.changed();
+  }
+  ideaWrite(n, text) {
+    const g = this.g, i = g.i;
+    if (g.step !== 'write' || !this.inGame(n) || i.ideas[n] != null) return;
+    const t = cleanText(text, 200);
+    if (!t) return;
+    i.ideas[n] = t;
+    this.changed();
+    this.checkAllDone();
+  }
+  ideaToGen() {
+    const g = this.g, i = g.i;
+    if (g.step !== 'write') return;
+    for (const n of g.players) if (i.ideas[n] == null) { const d = cleanText(this.draftOf(n, this.ideaKey()), 200); if (d) i.ideas[n] = d; }
+    i.order = shuffle(Object.keys(i.ideas));
+    if (!i.order.length) { i.res = { empty: true }; g.step = 'reveal'; clearTimeout(this.timer); g.dl = null; return this.changed(); }
+    g.step = 'gen';
+    // картинки заказывает страница хоста и сообщает результат через ideaImage()
+    this.setTimer(T.ideaGen, () => this.ideaToGuess());
+    this.changed();
+  }
+  // url — ссылка на картинку, 'no' — генератор отказал, 'skip' — нет ключа
+  ideaImage(author, url) {
+    const g = this.g, i = g.i;
+    if (g.step !== 'gen' || !i.order.includes(author)) return;
+    i.imgs[author] = String(url).slice(0, 500);
+    this.changed();
+    this.checkAllDone();
+  }
+  ideaToGuess() {
+    const g = this.g, i = g.i;
+    if (g.step !== 'gen') return;
+    for (const a of i.order) if (!i.imgs[a]) i.imgs[a] = 'no';
+    g.step = 'guess';
+    this.setTimer(T.ideaGuess, () => this.ideaReveal());
+    this.changed();
+  }
+  // guesses: { автор-слот (индекс в order): имя }
+  ideaClean(n, map) {
+    const i = this.g.i, clean = {};
+    for (const [k, v] of Object.entries(map && typeof map === 'object' ? map : {})) {
+      const slot = Number(k);
+      if (i.order[slot] && i.order[slot] !== n && this.inGame(v) && v !== n) clean[slot] = v;
+    }
+    return clean;
+  }
+  ideaGuess(n, map, final) {
+    const g = this.g, i = g.i;
+    if (g.step !== 'guess' || !this.inGame(n) || i.sent[n]) return;
+    i.guesses[n] = this.ideaClean(n, map);
+    if (final) i.sent[n] = 1;
+    this.changed();
+    this.checkAllDone();
+  }
+  ideaReveal() {
+    const g = this.g, i = g.i;
+    if (g.step !== 'guess') return;
+    clearTimeout(this.timer); g.dl = null;
+    for (const n of g.players) if (!i.sent[n]) { const d = this.draftOf(n, 'g' + i.r); if (d) i.guesses[n] = this.ideaClean(n, d); }
+    const right = {};
+    i.order.forEach((a, slot) => {
+      right[slot] = [];
+      for (const [n, gs] of Object.entries(i.guesses)) if (gs[slot] === a) { right[slot].push(n); g.scores[n] = (g.scores[n] || 0) + 100; }
+    });
+    i.res = { right };
+    g.step = 'reveal';
+    this.ev('reveal', {});
+    this.changed();
+  }
+  ideaLike(n, slot) {
+    const g = this.g, i = g.i;
+    slot = Number(slot);
+    const a = i.order[slot];
+    if (g.step !== 'reveal' || !a || a === n || !this.inGame(n)) return;
+    const set = i.likes[slot] || (i.likes[slot] = []);
+    if (set.includes(n)) return;
+    set.push(n);
+    g.scores[a] = (g.scores[a] || 0) + 50;
+    this.changed();
+  }
+  ideaNext() {
+    const g = this.g, i = g.i;
+    if (g.step !== 'reveal') return;
+    if (i.r + 1 >= i.ts.length) return this.finish();
+    i.r++;
+    this.ideaAsk();
+  }
+
   // --- конец ---
   finish() {
     clearTimeout(this.timer);
@@ -645,7 +765,8 @@ class Party {
     const g = this.g;
     if (g.ph === 'game' && g.dl) {
       const left = Math.max(5000, g.dl - Date.now());
-      const fin = { who: () => this.whoReveal(), funny: () => (g.step === 'write' ? this.funnyToVote() : this.funnyReveal()), draw: () => this.drawEndStep(Number(g.step[1])) }[this.mode];
+      const fin = { who: () => this.whoReveal(), funny: () => (g.step === 'write' ? this.funnyToVote() : this.funnyReveal()), draw: () => this.drawEndStep(Number(g.step[1])),
+        idea: () => (g.step === 'write' ? this.ideaToGen() : g.step === 'gen' ? this.ideaToGuess() : this.ideaReveal()) }[this.mode];
       this.setTimer(left, fin);
     }
   }
@@ -656,13 +777,14 @@ class Party {
   }
 }
 
-if (typeof module !== 'undefined') module.exports = { Party, PLAYERS, PCOLORS, WHO_Q, FUNNY_Q, DRAW_W, cleanDrawing, T };
+if (typeof module !== 'undefined') module.exports = { Party, PLAYERS, PCOLORS, WHO_Q, FUNNY_Q, DRAW_W, IDEA_T, cleanDrawing, T };
 
 const MODE = 'draw';
 const GAME = {
   who: { name: 'Кто из нас?', emo: '👉', short: 'kto', rules: 'Появляется вопрос вроде «Кто первым напьётся на свадьбе?». Каждый тайно голосует за кого-то из компании (можно и за себя). Потом все видят, кто за кого голосовал. Очко получает тот, кто угадал мнение большинства. В конце — титулы для каждого.' },
   funny: { name: 'Смешной ответ', emo: '😂', short: 'otvet', rules: 'Всем приходит одна и та же незаконченная фраза. За минуту каждый пишет свой самый смешной вариант. Потом ответы показываются без имён, и все голосуют за лучший (за свой нельзя). Каждый голос — 100 очков, если за тебя проголосовали все — «Разнос!» и +200.' },
   draw: { name: 'Испорченный рисунок', emo: '🎨', short: 'risunok', rules: 'Каждый получает смешное слово и рисует его (3 минуты). Потом рисунок уходит соседу — он пишет, что на нём. Следующий рисует это описание, а последний описывает новый рисунок. В конце все цепочки показываются по шагам: слово → рисунок → описание → рисунок → описание. Ставьте лайки лучшим рисункам и описаниям.' },
+  idea: { name: 'Угадай, кто загадал', emo: '🔮', short: 'zagadal', rules: 'Появляется тема, например «Если бы Марина была суперзлодейкой». За 75 секунд каждый описывает картинку, какую хочет. Телефон хоста просит нейросеть Grok нарисовать все описания. Потом картинки показываются без подписей, и каждый угадывает, чья это фантазия: +100 за каждое верное угадывание. На показе ставьте ❤️ лучшим картинкам: +50 автору.' },
 }[MODE];
 
 // ================= Состояние =================
@@ -751,7 +873,8 @@ function hostAct(peer, k, d, self) {
   if (k === 'approve' || k === 'deny') { if (self) G.approve(d, k === 'approve'); return; }
   if (k === 'join') { const e = G.join(String(d), peer, self); if (e && self) toast(e); return; }
   if (self && k === 'start') { G.start(d || {}); return; }
-  if (self && k === 'next') { if (MODE === 'who') G.whoNext(); if (MODE === 'funny') G.funnyNext(); if (MODE === 'draw') G.drawNext(); return; }
+  if (self && k === 'next') { if (MODE === 'who') G.whoNext(); if (MODE === 'funny') G.funnyNext(); if (MODE === 'draw') G.drawNext(); if (MODE === 'idea') G.ideaNext(); return; }
+  if (self && k === 'skip' && MODE === 'idea') { const st = G.g.step; if (st === 'write') G.ideaToGen(); else if (st === 'gen') G.ideaToGuess(); else if (st === 'guess') G.ideaReveal(); return; }
   if (self && k === 'lobby') { G.toLobby(); return; }
   if (self && k === 'skip') { G.checkAllDone(); if (G.g.step === 'vote' && MODE === 'who') G.whoReveal(); else if (G.g.step === 'write') G.funnyToVote(); else if (G.g.step === 'vote') G.funnyReveal(); else if (/^s\d$/.test(G.g.step)) G.drawEndStep(Number(G.g.step[1])); return; }
   const n = PLAYERS.find((x) => G.pl[x].peer === peer && G.pl[x].on);
@@ -762,9 +885,41 @@ function hostAct(peer, k, d, self) {
     case 'fvote': G.funnyVote(n, String(d)); break;
     case 'submit': G.drawSubmit(n, d); break;
     case 'like': G.drawLike(n, d?.k, d?.s); break;
+    case 'idea': G.ideaWrite(n, d); break;
+    case 'iguess': G.ideaGuess(n, d, true); break;
+    case 'ilike': G.ideaLike(n, d); break;
+  }
+}
+// ---------- Картинки через Grok (только у хоста, ключ хранится только на его телефоне) ----------
+const KEY_STORE = 'pt_xai_key';
+const getKey = () => { try { return localStorage.getItem(KEY_STORE) || ''; } catch (e) { return ''; } };
+const genStarted = {};
+function hostGenerate() {
+  const G = app.game, g = G?.g;
+  if (!G || MODE !== 'idea' || g.step !== 'gen') return;
+  const tag = g.i.r + '|' + g.i.order.join(',');
+  if (genStarted[tag]) return;
+  genStarted[tag] = true;
+  const key = getKey(), theme = IDEA_T[g.i.ts[g.i.r]];
+  for (const a of g.i.order) {
+    if (!key) { G.ideaImage(a, 'skip'); continue; }
+    const prompt = `${g.i.ideas[a]}. (Тема: ${theme}.) Яркая смешная иллюстрация, высокое качество, крупный план, без текста и надписей.`;
+    const ctrl = new AbortController(); setTimeout(() => ctrl.abort(), 80000);
+    fetch('https://api.x.ai/v1/images/generations', {
+      method: 'POST', signal: ctrl.signal,
+      headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'grok-imagine-image', prompt, n: 1, response_format: 'url' }),
+    }).then((r) => r.json().then((j) => ({ ok: r.ok, j })))
+      .then(({ ok, j }) => {
+        const url = j?.data?.[0]?.url;
+        if (!ok && j?.code !== 'imagine:content-moderated') toast('Grok: ' + String(j?.error || j?.code || 'ошибка').slice(0, 80));
+        G.ideaImage(a, ok && url ? url : 'no');
+      })
+      .catch(() => G.ideaImage(a, 'no'));
   }
 }
 function onGameChange() {
+  setTimeout(hostGenerate, 0);
   app.P = JSON.parse(JSON.stringify(app.game.pub()));
   app.offset = 0;
   store.set('host', { code: app.code, snap: app.game.snapshot(), at: Date.now() });
@@ -922,7 +1077,7 @@ function stateArrived() {
     }
     app.started = true;
     if (fresh.length) app.evLast = fresh[fresh.length - 1].id;
-    const sk = P.ph + P.step + (P.w?.qi ?? '') + (P.f?.r ?? '');
+    const sk = P.ph + P.step + (P.w?.qi ?? '') + (P.f?.r ?? '') + (P.i?.r ?? '');
     if (sk !== prevStep) { prevStep = sk; app.sel = {}; }
   }
   render();
@@ -952,6 +1107,8 @@ function doneMap(v) {
   if (MODE === 'funny' && v.step === 'write') return Object.fromEntries(Object.keys(v.f.answers).map((n) => [n, 1]));
   if (MODE === 'funny' && v.step === 'vote') return Object.fromEntries(Object.keys(v.f.votes).map((n) => [n, 1]));
   if (MODE === 'draw' && /^s\d$/.test(v.step)) return v.d.done;
+  if (MODE === 'idea' && v.step === 'write') return Object.fromEntries(Object.keys(v.i.ideas).map((n) => [n, 1]));
+  if (MODE === 'idea' && v.step === 'guess') return v.i.sent;
   return {};
 }
 function renderTop() {
@@ -979,14 +1136,15 @@ function renderMain(force) {
     // пока игрок рисует или пишет, экран не перерисовываем (чужие «готово» видны вверху)
     const busyInput = v.ph === 'game' && me && v.players.includes(me) && (
       (MODE === 'draw' && /^s\d$/.test(v.step) && !v.d.done[me]) ||
-      (MODE === 'funny' && v.step === 'write' && v.f.answers[me] == null));
-    if (busyInput && !rq) key = JSON.stringify(['input', v.step, v.f?.r, me, pending]);
+      (MODE === 'funny' && v.step === 'write' && v.f.answers[me] == null) ||
+      (MODE === 'idea' && v.step === 'write' && v.i.ideas[me] == null));
+    if (busyInput && !rq) key = JSON.stringify(['input', v.step, v.f?.r, v.i?.r, me, pending]);
     html = (rq ? requestsHtml(rq) : '') + (pending ? viewPending() : (!me && app.mode === 'client') || (v.ph === 'lobby' && !me) ? viewChoose(v) : v.ph === 'lobby' ? viewLobby(v) : v.ph === 'end' ? viewEnd(v, me) : viewGame(v, me));
   }
   if (!force && key === app.viewKey) return;
   app.viewKey = key;
   // анимации появления — только при первом показе этапа, а не при каждом чужом голосе
-  const stepKey = v ? JSON.stringify([v.ph, v.step, v.w?.qi, v.f?.r, v.d?.rv, !!myName()]) : 'x';
+  const stepKey = v ? JSON.stringify([v.ph, v.step, v.w?.qi, v.f?.r, v.d?.rv, v.i?.r, !!myName()]) : 'x';
   main.classList.toggle('noanim', stepKey === app.lastStepKey);
   app.lastStepKey = stepKey;
   const fid = document.activeElement?.id, fval = fid ? document.getElementById(fid)?.value : null;
@@ -1027,13 +1185,21 @@ function viewChoose(v) {
     <div class="faces">${free.map((n) => `<button class="face" data-join="${esc(n)}"><span class="av" style="background:${PCOLORS[n]}">${esc(n[0])}</span><b>${esc(n)}</b></button>`).join('') || '<p class="sub">Все места заняты</p>'}</div>
     <button class="btn ghost" data-a="exit">Назад</button>`;
 }
-const OPTS = { who: { key: 'rounds', label: 'Вопросов', vals: [8, 12, 16], def: 12 }, funny: { key: 'rounds', label: 'Раундов', vals: [3, 5, 7], def: 5 }, draw: { key: 'drawSec', label: 'Минут на рисунок', vals: [120, 180, 240], def: 180, fmt: (x) => x / 60 } }[MODE];
+const OPTS = { who: { key: 'rounds', label: 'Вопросов', vals: [8, 12, 16], def: 12 }, funny: { key: 'rounds', label: 'Раундов', vals: [3, 5, 7], def: 5 }, draw: { key: 'drawSec', label: 'Минут на рисунок', vals: [120, 180, 240], def: 180, fmt: (x) => x / 60 }, idea: { key: 'rounds', label: 'Раундов', vals: [3, 5, 7], def: 3 } }[MODE];
+function keyPanel() {
+  if (MODE !== 'idea' || !isHost()) return '';
+  const has = !!getKey();
+  return `<div class="panel"><p class="note">🔑 Ключ xAI (Grok) для картинок. Хранится только на этом телефоне и не попадает на сайт. Один раунд на 4 игроков стоит около 8 центов.</p>
+    ${has ? '<p class="status" style="color:var(--good)">Ключ сохранён ✓</p><button class="btn ghost" data-a="delKey">Удалить ключ с телефона</button>'
+      : '<input id="keyIn" type="password" autocomplete="off" placeholder="xai-…"><button class="btn sec" data-a="saveKey">Сохранить ключ</button><p class="note">Без ключа игра тоже работает: угадываем автора по самому описанию.</p>'}</div>`;
+}
 function viewLobby(v) {
   const on = PLAYERS.filter((n) => v.pl[n].joined && v.pl[n].on);
   const cur = app.opt ?? OPTS.def;
   return `<div class="emo-big">${GAME.emo}</div><div class="logo">${esc(GAME.name)}</div>${inviteHtml()}
     <div class="faces">${PLAYERS.map((n) => `<div class="face" style="${v.pl[n].on ? '' : 'opacity:.35'}"><span class="av" style="background:${PCOLORS[n]}">${esc(n[0])}</span><b>${esc(n)}</b><span class="note">${v.pl[n].on ? 'на месте' : 'ждём'}</span></div>`).join('')}</div>
     ${isHost() ? `<div class="panel"><p class="note">${OPTS.label}</p><div class="opts">${OPTS.vals.map((x) => `<button data-opt="${x}" class="${x === cur ? 'on' : ''}">${OPTS.fmt ? OPTS.fmt(x) : x}</button>`).join('')}</div></div>
+      ${keyPanel()}
       <button class="btn" data-a="start" ${on.length >= 2 ? '' : 'disabled'}>Начать (${on.length} ${on.length === 1 ? 'игрок' : 'игрока'})</button>`
     : '<p class="status">Хост скоро начнёт игру…</p>'}
     ${rulesHtml()}`;
@@ -1043,6 +1209,12 @@ function viewEnd(v, me) {
   let extra = '';
   if (MODE === 'who') {
     extra = `<h2>Титулы вечера</h2><div class="titles">${v.players.map((n) => `<div><b style="color:${PCOLORS[n]}">${esc(n)}</b>: ${(v.w.titles[n] || []).map((i) => esc(WHO_Q[i].replace(/^Кто /, '').replace(/\?$/, ''))).join(' · ') || 'без титулов — тёмная лошадка'}</div>`).join('')}</div>`;
+  }
+  if (MODE === 'idea' && v.i) {
+    // лучшая картинка последнего раунда по лайкам
+    let best = null;
+    for (const [slot, set] of Object.entries(v.i.likes || {})) if (!best || set.length > best[1].length) best = [Number(slot), set];
+    if (best) { const a = v.i.order[best[0]]; extra = `<h2>Лучшая картинка раунда ❤️ ${best[1].length}</h2>${ideaCard(v, best[0], true)}`; }
   }
   if (MODE === 'draw') {
     let best = null;
@@ -1141,7 +1313,55 @@ function viewGame(v, me) {
         ${hostNext(last ? 'К итогам 🏆' : rv.s >= 4 ? 'Следующая цепочка ➜' : 'Показать дальше ➜')}`;
     }
   }
+  if (MODE === 'idea') {
+    const it = v.i, theme = IDEA_T[it.ts[it.r]];
+    const head = `<div class="qcard"><div class="lbl">Раунд ${it.r + 1} из ${it.ts.length} · тема</div><div class="q">${esc(theme)}</div></div>`;
+    if (v.step === 'write') {
+      if (!inGame) return head + '<p class="status">Все придумывают картинки…</p>';
+      if (it.ideas[me] != null) return head + `<div class="ans" style="opacity:.85">${esc(it.ideas[me])}</div>` + waitHtml(v, 'Описание принято');
+      return head + `<p class="note" style="text-align:center">Опиши картинку, которую нарисует нейросеть. Чем безумнее и подробнее, тем смешнее. Не пиши своё имя 😉</p>
+        <textarea id="ideaIn" maxlength="200" placeholder="Например: Марина в короне верхом на Bratwurst, вокруг фейерверк…">${esc(draft && draft.key === 'i' + it.r ? draft.v : '')}</textarea><div class="count" id="ideaCnt">0 / 200</div>
+        <button class="btn" data-a="sendIdea">Отправить</button>`;
+    }
+    if (v.step === 'gen') {
+      const ready = it.order.filter((a) => it.imgs[a]).length;
+      return head + `<div class="emo-big" style="animation:pop 1s infinite alternate">🎨</div><p class="status">Grok рисует картинки… ${ready} из ${it.order.length}</p><p class="note" style="text-align:center">Обычно это занимает 10–30 секунд</p>${isHost() ? '<button class="btn ghost" data-a="skip">Не ждать</button>' : ''}`;
+    }
+    if (v.step === 'guess') {
+      if (!inGame) return head + '<p class="status">Игроки угадывают…</p>';
+      if (it.sent[me]) return head + waitHtml(v, 'Ответы приняты');
+      const need = it.order.map((a, s) => s).filter((s) => it.order[s] !== me);
+      const picked = need.filter((s) => app.sel[s]).length;
+      return head + `<p class="status">Чья это фантазия?</p><div class="chain">${it.order.map((a, s) => ideaCard(v, s, false)).join('')}</div>
+        <button class="btn" data-a="sendGuess">${picked < need.length ? `Готово (${picked} из ${need.length})` : 'Готово ✓'}</button>`;
+    }
+    if (v.step === 'reveal') {
+      if (it.res?.empty) return head + '<p class="status">В этом раунде никто ничего не придумал 🤷</p>' + hostNext();
+      return head + `<div class="chain">${it.order.map((a, s) => ideaCard(v, s, true)).join('')}</div>${hostNext(it.r + 1 >= it.ts.length ? 'К итогам 🏆' : 'Следующий раунд ➜')}`;
+    }
+  }
   return '<p class="status">…</p>';
+}
+function ideaPic(v, a) {
+  const url = v.i.imgs[a];
+  if (url && /^https:\/\//.test(url)) return `<img class="view" style="object-fit:cover" src="${esc(url)}" alt="Картинка" loading="eager">`;
+  if (url === 'no') return `<div class="txt" style="font-size:16px;color:var(--muted)">🙈 Нейросеть отказалась это рисовать</div>`;
+  return '';
+}
+function ideaCard(v, s, reveal) {
+  const it = v.i, a = it.order[s], me = myName(), pic = ideaPic(v, a);
+  const textOnly = !pic || it.imgs[a] === 'skip';
+  const body = (pic || '') + (reveal || textOnly || it.imgs[a] === 'no' ? `<div class="txt" style="font-size:18px">«${esc(it.ideas[a])}»</div>` : '');
+  if (!reveal) {
+    const own = a === me;
+    return `<div class="citem" style="animation-delay:${s * 0.1}s">${body}${own ? '<p class="note" style="text-align:center">Это твоя картинка 😎</p>'
+      : `<div class="opts">${v.players.filter((n) => n !== me).map((n) => `<button data-guess="${s}:${esc(n)}" class="${app.sel[s] === n ? 'on' : ''}" style="${app.sel[s] === n ? `background:${PCOLORS[n]};color:#fff` : ''}">${esc(n)}</button>`).join('')}</div>`}</div>`;
+  }
+  const right = it.res?.right?.[s] || [], likes = it.likes?.[s] || [];
+  const canLike = me && a !== me && v.players.includes(me) && v.step === 'reveal' && !likes.includes(me);
+  return `<div class="citem" style="animation-delay:${s * 0.15}s"><div class="who"><span class="dot" style="background:${PCOLORS[a]}"></span>Автор: <b style="color:${PCOLORS[a]}">${esc(a)}</b></div>${body}
+    <p class="note" style="text-align:center">${right.length ? 'Угадали: ' + right.map((n) => `<b style="color:${PCOLORS[n]}">${esc(n)}</b>`).join(', ') + ' (+100)' : 'Никто не угадал'}</p>
+    ${v.step === 'reveal' ? `<button class="like ${likes.includes(me) ? 'on' : ''}" ${canLike ? '' : 'disabled'} data-ilike="${s}">❤️ ${likes.length}</button>` : ''}</div>`;
 }
 
 // ---------- Меню ----------
@@ -1187,6 +1407,10 @@ const actions = {
   skip: () => act('skip'),
   endNow: (b) => confirmTwice('end', b, 'Точно? Нажми ещё раз', () => { app.game?.finish(); closeSheet(); }),
   sendAns: () => { const t = $('#ansIn').value.trim(); if (!t) return toast('Напиши ответ'); sfx.done(); act('answer', t); },
+  sendIdea: () => { const t = $('#ideaIn').value.trim(); if (!t) return toast('Опиши картинку'); sfx.done(); act('idea', t); },
+  sendGuess: () => { sfx.done(); act('iguess', app.sel); },
+  saveKey: () => { const k = $('#keyIn').value.trim(); if (!/^xai-/.test(k)) return toast('Ключ начинается с xai-'); try { localStorage.setItem(KEY_STORE, k); } catch (e) { return toast('Браузер не даёт сохранить ключ'); } toast('Ключ сохранён на этом телефоне'); renderMain(true); },
+  delKey: () => { try { localStorage.removeItem(KEY_STORE); } catch (e) { /* нет */ } toast('Ключ удалён'); renderMain(true); },
   sendDesc: () => { const t = $('#descIn').value.trim(); if (!t) return toast('Напиши, что нарисовано'); sfx.done(); act('submit', t); },
   sendDraw: (b) => {
     if (!pad.strokes.length) return confirmTwice('emptyDraw', b, 'Рисунок пустой. Отправить всё равно?', () => act('submit', []));
@@ -1203,6 +1427,10 @@ function bindMain() {
   m.querySelectorAll('[data-opt]').forEach((b) => b.onclick = () => { app.opt = Number(b.dataset.opt); renderMain(true); });
   m.querySelectorAll('[data-vote]').forEach((b) => b.onclick = () => { sfx.tap(); act('vote', b.dataset.vote); });
   m.querySelectorAll('[data-fvote]').forEach((b) => b.onclick = () => { sfx.tap(); act('fvote', b.dataset.fvote); });
+  m.querySelectorAll('[data-guess]').forEach((b) => b.onclick = () => { const [s, n] = b.dataset.guess.split(':'); app.sel = { ...app.sel, [s]: n }; saveDraft('g' + v.i.r, app.sel); sfx.tap(); renderMain(true); });
+  m.querySelectorAll('[data-ilike]').forEach((b) => b.onclick = () => { sfx.tap(); act('ilike', Number(b.dataset.ilike)); });
+  const idea = $('#ideaIn');
+  if (idea && v) { const upd = () => { $('#ideaCnt').textContent = idea.value.length + ' / 200'; saveDraft('i' + v.i.r, idea.value); }; idea.oninput = upd; upd(); }
   m.querySelectorAll('[data-like]').forEach((b) => b.onclick = () => { const [k, s] = b.dataset.like.split(':').map(Number); sfx.tap(); act('like', { k, s }); });
   m.querySelectorAll('[data-col]').forEach((b) => b.onclick = () => { pad.color = b.dataset.col; m.querySelectorAll('[data-col]').forEach((x) => x.classList.toggle('on', x === b)); });
   m.querySelectorAll('[data-wid]').forEach((b) => b.onclick = () => { pad.width = Number(b.dataset.wid); m.querySelectorAll('[data-wid]').forEach((x) => x.classList.toggle('on', x === b)); });

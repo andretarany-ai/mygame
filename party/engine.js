@@ -75,6 +75,17 @@ const DRAW_W = [
   'Карусель ужаса', 'Свадебный торт упал', 'Глухой телефон', 'Вечеринка в пижамах', 'Пингвин-официант', 'Обезьяна с селфи-палкой',
 ];
 
+const IDEA_T = [
+  'Если бы Марина была суперзлодейкой', 'Андрей в роли супергероя', 'Даша — королева Иббенбюрена', 'Сережа на необитаемом острове',
+  'Наша компания через 20 лет', 'Иббенбюрен в 3000 году', 'Новый аттракцион на Кирмесе', 'Что на самом деле происходит на складе Fiege',
+  'Идеальное свидание Даши и Андрея', 'Худшее свидание Марины и Сережи', 'Обложка альбома нашей рок-группы', 'Самый безумный бизнес Андрея',
+  'Самый странный сон после вечеринки', 'Животное, которым был бы каждый из нас', 'Свадьба мечты в стиле фильма ужасов',
+  'Отпуск, который пошёл не так', 'Bratwurst фургон из будущего', 'Барбершоп у Джавида на Марсе', 'Если бы зассанный каток стал курортом',
+  'Тайная жизнь кота ночью', 'Реклама электрических стелек', 'Мальчишник, о котором никто не должен узнать', 'Девичник в стиле Средневековья',
+  'Мем про нашу компанию', 'Утро после Экстраблатта', 'Казино, где ставят не деньги', 'Наш общий дом через 10 лет',
+  'Новая олимпийская дисциплина', 'Самый неловкий момент на работе', 'Если бы ДБ ходил вовремя', 'Битва Rewe против Netto',
+];
+
 // ---------- Случай ----------
 function rnd(n) {
   const c = (typeof crypto !== 'undefined' && crypto.getRandomValues) ? crypto : require('crypto').webcrypto;
@@ -85,7 +96,7 @@ function rnd(n) {
 function shuffle(arr) { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = rnd(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 const pick = (arr, n) => shuffle(arr).slice(0, n);
 
-const T = { whoVote: 25000, funnyWrite: 60000, funnyVote: 30000, drawTime: 180000, descTime: 60000, grace: 2500 };
+const T = { whoVote: 25000, funnyWrite: 60000, funnyVote: 30000, drawTime: 180000, descTime: 60000, ideaWrite: 75000, ideaGen: 90000, ideaGuess: 60000, grace: 2500 };
 const cleanText = (t, max = 120) => String(t ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
 
 // Рисунок: [{c: 'цвет', w: толщина, p: [x,y,x,y…]}], координаты 0…1000. Проверяем и ограничиваем размер.
@@ -169,6 +180,7 @@ class Party {
     if (this.mode === 'who') this.whoStart();
     if (this.mode === 'funny') this.funnyStart();
     if (this.mode === 'draw') this.drawStart();
+    if (this.mode === 'idea') this.ideaStart();
   }
   toLobby() { clearTimeout(this.timer); Object.assign(this.g, { ph: 'lobby', step: null, dl: null, w: null, f: null, d: null }); this.changed(); }
   // Все, кто на связи, уже сделали ход — не ждём таймер
@@ -179,6 +191,12 @@ class Party {
       const f = this.g.f;
       if (this.g.step === 'write' && this.online().every((n) => f.answers[n] != null)) this.funnyToVote();
       else if (this.g.step === 'vote' && this.online().every((n) => f.votes[n] || !this.funnyCanVote(n))) this.funnyReveal();
+    }
+    if (this.mode === 'idea') {
+      const i = this.g.i;
+      if (this.g.step === 'write' && this.online().every((n) => i.ideas[n] != null)) this.ideaToGen();
+      else if (this.g.step === 'gen' && i.order.every((a) => i.imgs[a])) this.ideaToGuess();
+      else if (this.g.step === 'guess' && this.online().every((n) => i.sent[n] || !i.order.some((a) => a !== n))) this.ideaReveal();
     }
     if (this.mode === 'draw' && ['s1', 's2', 's3', 's4'].includes(this.g.step)) {
       const d = this.g.d, s = Number(this.g.step[1]);
@@ -359,6 +377,108 @@ class Party {
     this.changed();
   }
 
+  // ================= «Угадай, кто загадал» =================
+  // Каждый пишет описание картинки → хост заказывает картинки → все угадывают авторов → показ.
+  ideaStart() {
+    const count = Number(this.g.opt.rounds) || 3;
+    this.g.i = { ts: pick(IDEA_T.map((_, k) => k), count), r: 0 };
+    this.ideaAsk();
+  }
+  ideaKey() { return 'i' + this.g.i.r; }
+  ideaAsk() {
+    const g = this.g;
+    Object.assign(g.i, { ideas: {}, imgs: {}, order: [], guesses: {}, sent: {}, likes: {}, res: null });
+    g.step = 'write';
+    this.setTimer(T.ideaWrite, () => this.ideaToGen());
+    this.changed();
+  }
+  ideaWrite(n, text) {
+    const g = this.g, i = g.i;
+    if (g.step !== 'write' || !this.inGame(n) || i.ideas[n] != null) return;
+    const t = cleanText(text, 200);
+    if (!t) return;
+    i.ideas[n] = t;
+    this.changed();
+    this.checkAllDone();
+  }
+  ideaToGen() {
+    const g = this.g, i = g.i;
+    if (g.step !== 'write') return;
+    for (const n of g.players) if (i.ideas[n] == null) { const d = cleanText(this.draftOf(n, this.ideaKey()), 200); if (d) i.ideas[n] = d; }
+    i.order = shuffle(Object.keys(i.ideas));
+    if (!i.order.length) { i.res = { empty: true }; g.step = 'reveal'; clearTimeout(this.timer); g.dl = null; return this.changed(); }
+    g.step = 'gen';
+    // картинки заказывает страница хоста и сообщает результат через ideaImage()
+    this.setTimer(T.ideaGen, () => this.ideaToGuess());
+    this.changed();
+  }
+  // url — ссылка на картинку, 'no' — генератор отказал, 'skip' — нет ключа
+  ideaImage(author, url) {
+    const g = this.g, i = g.i;
+    if (g.step !== 'gen' || !i.order.includes(author)) return;
+    i.imgs[author] = String(url).slice(0, 500);
+    this.changed();
+    this.checkAllDone();
+  }
+  ideaToGuess() {
+    const g = this.g, i = g.i;
+    if (g.step !== 'gen') return;
+    for (const a of i.order) if (!i.imgs[a]) i.imgs[a] = 'no';
+    g.step = 'guess';
+    this.setTimer(T.ideaGuess, () => this.ideaReveal());
+    this.changed();
+  }
+  // guesses: { автор-слот (индекс в order): имя }
+  ideaClean(n, map) {
+    const i = this.g.i, clean = {};
+    for (const [k, v] of Object.entries(map && typeof map === 'object' ? map : {})) {
+      const slot = Number(k);
+      if (i.order[slot] && i.order[slot] !== n && this.inGame(v) && v !== n) clean[slot] = v;
+    }
+    return clean;
+  }
+  ideaGuess(n, map, final) {
+    const g = this.g, i = g.i;
+    if (g.step !== 'guess' || !this.inGame(n) || i.sent[n]) return;
+    i.guesses[n] = this.ideaClean(n, map);
+    if (final) i.sent[n] = 1;
+    this.changed();
+    this.checkAllDone();
+  }
+  ideaReveal() {
+    const g = this.g, i = g.i;
+    if (g.step !== 'guess') return;
+    clearTimeout(this.timer); g.dl = null;
+    for (const n of g.players) if (!i.sent[n]) { const d = this.draftOf(n, 'g' + i.r); if (d) i.guesses[n] = this.ideaClean(n, d); }
+    const right = {};
+    i.order.forEach((a, slot) => {
+      right[slot] = [];
+      for (const [n, gs] of Object.entries(i.guesses)) if (gs[slot] === a) { right[slot].push(n); g.scores[n] = (g.scores[n] || 0) + 100; }
+    });
+    i.res = { right };
+    g.step = 'reveal';
+    this.ev('reveal', {});
+    this.changed();
+  }
+  ideaLike(n, slot) {
+    const g = this.g, i = g.i;
+    slot = Number(slot);
+    const a = i.order[slot];
+    if (g.step !== 'reveal' || !a || a === n || !this.inGame(n)) return;
+    const set = i.likes[slot] || (i.likes[slot] = []);
+    if (set.includes(n)) return;
+    set.push(n);
+    g.scores[a] = (g.scores[a] || 0) + 50;
+    this.changed();
+  }
+  ideaNext() {
+    const g = this.g, i = g.i;
+    if (g.step !== 'reveal') return;
+    if (i.r + 1 >= i.ts.length) return this.finish();
+    i.r++;
+    this.ideaAsk();
+  }
+
   // --- конец ---
   finish() {
     clearTimeout(this.timer);
@@ -377,7 +497,8 @@ class Party {
     const g = this.g;
     if (g.ph === 'game' && g.dl) {
       const left = Math.max(5000, g.dl - Date.now());
-      const fin = { who: () => this.whoReveal(), funny: () => (g.step === 'write' ? this.funnyToVote() : this.funnyReveal()), draw: () => this.drawEndStep(Number(g.step[1])) }[this.mode];
+      const fin = { who: () => this.whoReveal(), funny: () => (g.step === 'write' ? this.funnyToVote() : this.funnyReveal()), draw: () => this.drawEndStep(Number(g.step[1])),
+        idea: () => (g.step === 'write' ? this.ideaToGen() : g.step === 'gen' ? this.ideaToGuess() : this.ideaReveal()) }[this.mode];
       this.setTimer(left, fin);
     }
   }
@@ -388,4 +509,4 @@ class Party {
   }
 }
 
-if (typeof module !== 'undefined') module.exports = { Party, PLAYERS, PCOLORS, WHO_Q, FUNNY_Q, DRAW_W, cleanDrawing, T };
+if (typeof module !== 'undefined') module.exports = { Party, PLAYERS, PCOLORS, WHO_Q, FUNNY_Q, DRAW_W, IDEA_T, cleanDrawing, T };
