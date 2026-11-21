@@ -131,3 +131,4 @@ h2 { font-size: 22px; text-align: center; margin: 4px 0; }
 }
 
 .pic { font-size: 76px; line-height: 1.15; text-align: center; padding: 4px 0 12px; letter-spacing: 6px; }
+.qimg { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 12px; margin-bottom: 12px; max-height: 36vh; }

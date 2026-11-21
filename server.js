@@ -24,6 +24,7 @@ const readTime = (text) => Math.min(8000, 2000 + text.length * 45) * SCALE;
 
 const app = express();
 app.use(express.static(path.join(__dirname, 'public')));
+app.use('/img', express.static(path.join(__dirname, 'docs', 'img')));
 const server = http.createServer(app);
 const io = new Server(server);
 
@@ -278,6 +279,7 @@ function publicState() {
       theme: c.theme, value: c.value, cat: c.cat, catTarget: c.catTarget,
       text: showQ ? c.q.q : null,
       pic: showQ ? c.q.pic || null : null,
+      img: showQ ? c.q.img || null : null,
       answerer: c.answerer, tried: c.tried, attempts: c.attempts, result: c.result,
       answer: s.phase === 'reveal' ? c.q.a : null,
     };

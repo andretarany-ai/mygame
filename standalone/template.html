@@ -115,6 +115,7 @@ h2 { font-family: var(--display); font-weight: 400; font-size: 22px; text-align:
 .att.ok { border-left-color: var(--good); }
 .att .why { color: var(--muted); font-size: 13px; text-align: right; }
 .correct { background: var(--good); color: var(--good-ink); padding: 14px; border-radius: 12px; text-align: center; font-size: 21px; font-weight: 800; }
+.qimg { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 12px; margin-bottom: 12px; max-height: 36vh; background: #0003; }
 .pic { font-size: 76px; line-height: 1.15; text-align: center; padding-block: 4px 12px; letter-spacing: 6px; }
 .edit-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; background: #0005; padding: 10px; border-radius: 10px; }
 .edit-row .nm { font-weight: 800; }
@@ -740,7 +741,7 @@ function viewMenu() {
     </div>`;
   return `
     <div class="logo">МОЯ ИГРА</div>
-    <p class="sub">Викторина для взрослых · Украина, бренды, 18+ · 3 раунда и финал</p>
+    <p class="sub">Викторина 18+ · вечеринки, любовь, кино, машины · с картинками · 3 раунда и финал</p>
     ${online}
     <div class="panel">
       <h2>Один телефон на всех</h2>
@@ -805,8 +806,16 @@ function viewLobby() {
     ${rulesHtml()}`;
 }
 
+// Заранее загружаем картинки раунда, чтобы они появлялись мгновенно
+const preloaded = {};
+function preloadRound(ri) {
+  if (window.MG_BUILD !== 'pages' || preloaded[ri] || !DATA.rounds[ri]) return;
+  preloaded[ri] = true;
+  for (const t of DATA.rounds[ri].themes) for (const q of t.questions) if (q.img) { const im = new Image(); im.src = 'img/' + q.img + '.webp'; }
+}
 function viewRoundIntro() {
   const r = DATA.rounds[app.P.ri];
+  preloadRound(app.P.ri);
   return `<div style="margin:auto" class="stack">
     <div class="logo">${esc(r.name)}</div>
     <p class="sub">Вопросы по ${r.values[0]}–${r.values[r.values.length - 1]} очков. Темы:</p>
@@ -824,6 +833,7 @@ function canPick() {
 
 function viewBoard() {
   const P = app.P, r = DATA.rounds[P.ri], mine = canPick();
+  preloadRound(P.ri);
   const nv = r.values.length;
   const status = app.mode === 'local' ? `Выбирает <b>${esc(P.ch)}</b>: нажми на вопрос` : mine ? 'Твой выбор! Нажми на вопрос' : `Выбирает <b>${esc(P.ch)}</b>…`;
   return `<div class="status">${status}</div>
@@ -880,7 +890,7 @@ function viewQuestion() {
     action = `<div class="status">${win ? `🎉 ${esc(win[0])} +${c.v}` : 'Никто не ответил верно'}</div><div class="correct">Правильный ответ: ${esc(q.a)}</div>`;
   }
   return `<div class="qcard"><div class="qhead"><span>${c.cat ? '🐱 ' : ''}${esc(r.themes[c.ti].name)}</span><span class="v">${c.v}</span></div>
-    ${q.pic ? `<div class="pic" role="img" aria-label="Картинка к вопросу">${esc(q.pic)}</div>` : ''}
+    ${q.img && window.MG_BUILD === 'pages' ? `<img class="qimg" src="img/${esc(q.img)}.webp" alt="Картинка к вопросу">` : q.pic ? `<div class="pic" role="img" aria-label="Картинка к вопросу">${esc(q.pic)}</div>` : ''}
     <div class="qtext">${esc(q.q)}</div></div>${action}${attemptsHtml(c)}`;
 }
 

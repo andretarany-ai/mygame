@@ -285,7 +285,7 @@ function viewQuestion() {
   return `
     <div class="qcard">
       <div class="qhead"><span>${c.cat ? '🐱 ' : ''}${esc(c.theme)}</span><span>${c.value}</span></div>
-      ${c.pic ? `<div class="pic">${esc(c.pic)}</div>` : ''}
+      ${c.img ? `<img class="qimg" src="/img/${esc(c.img)}.webp" alt="">` : c.pic ? `<div class="pic">${esc(c.pic)}</div>` : ''}
       <div class="qtext">${esc(c.text)}</div>
     </div>
     ${action}
