@@ -79,6 +79,10 @@ h2 { font-family: var(--display); font-weight: 400; font-size: 22px; text-align:
 .req { outline: 2px solid var(--gold); }
 .req .two button { padding: 14px 8px; font-size: 17px; }
 .req .two button.okb { background: var(--good); color: var(--good-ink); }
+.gamelist { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.gamelist a { display: grid; gap: 2px; justify-items: center; text-align: center; padding: 12px 6px; border-radius: 14px; background: var(--cell); color: var(--fg); text-decoration: none; }
+.gamelist a span { font-size: 30px; }
+.gamelist a small { color: var(--muted); font-size: 12px; }
 .rowline { display: flex; justify-content: space-between; gap: 8px; background: #0005; padding: 10px 12px; border-radius: 10px; }
 
 .board { display: grid; gap: 5px; }
@@ -749,7 +753,14 @@ function viewMenu() {
       ${fresh(ls) ? '<button class="btn" data-a="localResume">Продолжить игру</button>' : ''}
       <button class="btn ${fresh(ls) ? 'sec' : ''}" data-a="local">Играть на одном телефоне</button>
     </div>
-    ${window.MG_BUILD === 'pages' ? `<a class="btn sec" style="display:block;text-align:center;text-decoration:none" href="./ibbenburen/">🎲 Иббенбюрен: наша команда</a>` : ''}
+    ${window.MG_BUILD === 'pages' ? `<div class="panel">
+      <h2>Другие игры</h2>
+      <div class="gamelist">
+        <a href="./ibbenburen/"><span>🎲</span><b>Иббенбюрен</b><small>бизнес-игра в 3D</small></a>
+        <a href="./kto/"><span>👉</span><b>Кто из нас?</b><small>голосуем друг за друга</small></a>
+        <a href="./otvet/"><span>😂</span><b>Смешной ответ</b><small>пишем и выбираем лучший</small></a>
+        <a href="./risunok/"><span>🎨</span><b>Испорченный рисунок</b><small>рисуем и угадываем</small></a>
+      </div></div>` : ''}
     ${rulesHtml()}`;
 }
 
