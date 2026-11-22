@@ -312,7 +312,17 @@ body.ingame #viewBtn { display: none; }
 .offer .nm { font-weight: 800; font-size: 15px; line-height: 1.2; min-width: 0; }
 .offer .sm { font-size: 12px; color: #6a5a3a; font-weight: 600; }
 .offer .pr { font-family: var(--display); font-size: 18px; }
-.dock { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; border-top: 1px solid #ffffff14; padding-top: 6px; }
+.dock { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; border-top: 1px solid #ffffff14; padding-top: 6px; }
+.dock button.hot { color: var(--gold); animation: glow 1.6s ease-in-out infinite; }
+@keyframes glow { 50% { background: #ffc93c22; } }
+.bgroup { border-radius: 14px; overflow: hidden; background: #fffaf0; color: #1b1b1b; }
+.bgroup .bh { padding: 8px 12px; color: #fff; font-weight: 800; display: flex; justify-content: space-between; text-shadow: 0 1px 0 #0006; }
+.bgroup .brow { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; padding: 8px 12px; border-top: 1px solid #0000000f; }
+.bgroup .brow .bn { font-weight: 700; font-size: 14px; min-width: 0; }
+.bgroup .brow .bn small { display: block; color: #6a5a3a; font-weight: 600; font-size: 12px; }
+.bgroup .brow button { padding: 10px 12px; font-weight: 800; font-size: 14px; border-radius: 10px; background: #e8e1cf; color: #222; }
+.bgroup .brow button.plus { background: #1b1b1b; color: #fff; }
+.bgroup .bmiss { padding: 10px 12px; font-size: 13px; color: #7a4a00; }
 .dock button { background: transparent; color: var(--muted); padding: 4px 2px; font-size: 11px; font-weight: 700; display: grid; justify-items: center; gap: 1px; border-radius: 10px; position: relative; }
 .dock button .ic { font-size: 20px; line-height: 1.2; }
 .dock button .badge { position: absolute; top: 0; right: 22%; background: var(--gold); color: var(--ink); font-size: 10px; border-radius: 8px; padding: 0 5px; }
@@ -2094,10 +2104,17 @@ function cardBox(card) {
   const list = card.deck === 'luck' ? LUCK : BANK;
   return `<div class="cardbox ${card.deck}"><div class="deck">${card.deck === 'luck' ? '🍀 УДАЧА' : '🏦 БАНК'} · ${esc(card.who)}</div><div>${esc(list[card.i].x)}</div></div>`;
 }
+// Можно ли сейчас где-нибудь построить дом
+function canBuildAny(V, me) {
+  if (!me || V.ph !== 'play') return false;
+  return Object.keys(V.own).some((c) => !R.canBuild(V.s, me, Number(c)));
+}
 function dockHtml(V, me) {
   const mine = me ? Object.values(V.own).filter((o) => o.o === me).length : 0;
+  const cb = canBuildAny(V, me);
   return `<div class="dock">
     <button data-sh="mine"><span class="ic">🏠</span>Мои улицы${mine ? `<span class="badge">${mine}</span>` : ''}</button>
+    <button data-sh="build" class="${cb ? 'hot' : ''}" ${!me || V.ph !== 'play' ? 'disabled' : ''}><span class="ic">🏗️</span>Строить${cb ? '<span class="badge">!</span>' : ''}</button>
     <button data-sh="trade" ${!me || V.pl[me]?.out || V.ph !== 'play' ? 'disabled' : ''}><span class="ic">🤝</span>Сделка</button>
     <button data-sh="log"><span class="ic">📜</span>Журнал</button>
     <button data-sh="menu"><span class="ic">⚙️</span>Меню</button></div>`;
@@ -2149,10 +2166,10 @@ function viewGame(V, me) {
       if (isMe) {
         if (cp.jail) a.push(`<div class="line">🚔 Ты в тюрьме · попытка ${cp.jt + 1} из 3</div>
           <div class="row3"><button class="gold" data-a="roll">🎲 На дубль</button><button class="glass" data-a="payJail" ${cp.money >= 50 ? '' : 'disabled'}>50 €</button><button class="glass" data-a="jailCard" ${cp.jc ? '' : 'disabled'}>Карта (${cp.jc})</button></div>`);
-        else a.push(`<button class="mega gold" data-a="roll">🎲 ${V.dbl ? 'Дубль! Бросай ещё' : 'Бросить кубики'}</button>`);
+        else a.push(`<button class="mega gold" data-a="roll">🎲 ${V.dbl ? 'Дубль! Бросай ещё' : 'Бросить кубики'}</button>${canBuildAny(V, me) ? '<button class="glass" style="padding:11px" data-sh="build">🏗️ Сначала построить дома</button>' : ''}`);
       } else a.push(pline(V.cur, `Ход: ${esc(V.cur)}${cp.jail ? ' · в тюрьме' : ''}`) + (!cp.on && app.mode === 'host' ? '<button class="glass" style="padding:10px" data-a="skip">Пропустить ход (нет связи)</button>' : ''));
     } else if (V.step === 'end') {
-      if (isMe) a.push(`<div class="rowN"><button class="glass" data-sh="mine">🏗️ Строить</button><button class="gold" style="grid-column: span 2" data-a="end">Завершить ход ➜</button></div>`);
+      if (isMe) a.push(`<div class="rowN"><button class="glass" data-sh="build">🏗️ Строить</button><button class="gold" style="grid-column: span 2" data-a="end">Завершить ход ➜</button></div>`);
       else a.push(pline(V.cur, `${esc(V.cur)} завершает ход…`) + (!cp.on && app.mode === 'host' ? '<button class="glass" style="padding:10px" data-a="skip">Пропустить ход (нет связи)</button>' : ''));
     }
   }
@@ -2241,6 +2258,30 @@ function renderSheet() {
     const me = myName();
     html += `<h2>Мои улицы</h2>${me ? `<p class="sub">${eur(V.pl[me].money)} · состояние ${eur(R.worth(V.s, me))}</p>` : ''}${propListHtml(V, me)}
       <p class="note">Нажми на улицу, чтобы построить дом, продать его или заложить.</p>`;
+  } else if (s.k === 'build' && V) {
+    const me = myName();
+    const groups = GROUPS.map((gr, g) => ({ gr, g, cells: groupCells(g) })).filter((x) => x.cells.some((c) => V.own[c]?.o === me));
+    html += `<h2>🏗️ Строительство</h2><p class="sub">${me ? 'У тебя ' + eur(V.pl[me].money) : ''} · в банке домов: ${V.houses}, отелей: ${V.hotels}</p>
+      <p class="note">Дома строятся, когда у тебя <b>вся цветная группа</b>. Строить нужно равномерно: сначала по одному дому на каждой улице группы. После 4 домов — отель.</p>`;
+    if (!groups.length) html += '<p class="sub">У тебя пока нет улиц с цветом. Покупай улицы, чтобы собрать группу!</p>';
+    for (const { gr, g, cells } of groups) {
+      const full = R.ownsGroup(V.s, me, g);
+      html += `<div class="bgroup"><div class="bh" style="background:${gr.c}"><span>${esc(gr.name)}</span><span>дом ${eur(gr.house)}</span></div>`;
+      if (full) {
+        for (const c of cells) {
+          const o = V.own[c], wb = R.canBuild(V.s, me, c), ws = R.canSell(V.s, me, c);
+          const t = rentTable(CELLS[c].p), next = o.h < 5 ? t[o.h + 1] : null;
+          html += `<div class="brow"><span class="bn">${CELLS[c].e} ${esc(CELLS[c].n)} ${o.h === 5 ? '🏨' : '🏠'.repeat(o.h)}${o.m ? ' <span class="tag">в залоге</span>' : ''}
+              <small>аренда сейчас ${eur(R.rent(V.s, c, 7))}${next ? ` → с ${o.h === 4 ? 'отелем' : o.h + 1 + ' дом.'} ${eur(next)}` : ' (максимум)'}${wb && wb !== 'Нельзя' && o.h < 5 ? ' · ' + esc(wb) : ''}</small></span>
+            <button data-act="sell" data-c="${c}" ${ws ? 'disabled' : ''} aria-label="Продать дом">−</button>
+            <button class="plus" data-act="build" data-c="${c}" ${wb ? 'disabled' : ''}>+ ${o.h === 4 ? 'отель' : 'дом'}</button></div>`;
+        }
+      } else {
+        const miss = cells.filter((c) => V.own[c]?.o !== me).map((c) => `«${esc(CELLS[c].s)}» (${V.own[c] ? 'у ' + esc(V.own[c].o) : 'свободна'})`);
+        html += `<div class="bmiss">Чтобы строить, не хватает: ${miss.join(', ')}. ${miss.length > 1 ? 'Купи их' : 'Купи её'} или предложи сделку.</div>`;
+      }
+      html += '</div>';
+    }
   } else if (s.k === 'log' && V) {
     html += `<h2>Журнал</h2><div class="log">${V.log.slice().reverse().map((l) => `<div>${esc(l)}</div>`).join('')}</div>`;
   } else if (s.k === 'menu') {
