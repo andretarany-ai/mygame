@@ -119,6 +119,8 @@ h2 { font-family: var(--display); font-weight: 400; font-size: 22px; text-align:
 .att.ok { border-left-color: var(--good); }
 .att .why { color: var(--muted); font-size: 13px; text-align: right; }
 .correct { background: var(--good); color: var(--good-ink); padding: 14px; border-radius: 12px; text-align: center; font-size: 21px; font-weight: 800; }
+.say { font-size: 17px; line-height: 1.4; font-style: italic; background: #0004; border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; }
+.playbtn { margin-bottom: 10px; padding: 12px; font-size: 16px; }
 .qimg { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 12px; margin-bottom: 12px; max-height: 36vh; background: #0003; }
 .pic { font-size: 76px; line-height: 1.15; text-align: center; padding-block: 4px 12px; letter-spacing: 6px; }
 .edit-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; background: #0005; padding: 10px; border-radius: 10px; }
@@ -180,6 +182,8 @@ const SCORE_EDITOR = 'Андрей'; // этот игрок может меня�
 const COLORS = ['var(--p1)', 'var(--p2)', 'var(--p3)', 'var(--p4)'];
 const T = { roundIntro: 4000, cat: 20000, buzz: 10000, answer: 25000, reveal: 5000, finalStake: 30000, finalAnswer: 45000, buzzWindow: 220 };
 const readTime = (t) => Math.min(8000, 2000 + t.length * 45);
+// для озвученных вопросов кнопка загорается после пересказа (~10 с)
+const qRead = (q) => readTime(q.q) + (q.audio ? 10000 : 0);
 const qOf = (ri, ti, qi) => DATA.rounds[ri].themes[ti].questions[qi];
 
 const store = {
@@ -302,14 +306,14 @@ class Game {
         const others = this.online().filter((n) => n !== g.ch);
         this.catGive(g.ch, others[Math.floor(Math.random() * others.length)] || g.ch);
       });
-    } else this.phase('reading', readTime(q.q), () => this.openBuzz());
+    } else this.phase('reading', qRead(q), () => this.openBuzz());
   }
   catGive(from, to) {
     const g = this.g;
     if (g.ph !== 'cat' || from !== g.ch || !this.pl[to]?.joined) return;
     if (to === g.ch && this.online().some((n) => n !== g.ch)) return;
     g.cur.ct = to; g.cur.an = to;
-    this.phase('reading', readTime(qOf(g.ri, g.cur.ti, g.cur.qi).q), () => this.phase('answering', T.answer, () => this.answer(to, '', true)));
+    this.phase('reading', qRead(qOf(g.ri, g.cur.ti, g.cur.qi)), () => this.phase('answering', T.answer, () => this.answer(to, '', true)));
   }
   openBuzz() { this.phase('buzzing', T.buzz, () => { this.g.cur.res = 'none'; this.reveal(); }); }
   buzz(name, rt) {
@@ -823,7 +827,10 @@ const preloaded = {};
 function preloadRound(ri) {
   if (window.MG_BUILD !== 'pages' || preloaded[ri] || !DATA.rounds[ri]) return;
   preloaded[ri] = true;
-  for (const t of DATA.rounds[ri].themes) for (const q of t.questions) if (q.img) { const im = new Image(); im.src = 'img/' + q.img + '.webp'; }
+  for (const t of DATA.rounds[ri].themes) for (const q of t.questions) {
+    if (q.img) { const im = new Image(); im.src = 'img/' + q.img + '.webp'; }
+    if (q.audio) { const au = new Audio(); au.preload = 'auto'; au.src = 'audio/' + q.audio + '.mp3'; }
+  }
 }
 function viewRoundIntro() {
   const r = DATA.rounds[app.P.ri];
@@ -903,7 +910,39 @@ function viewQuestion() {
   }
   return `<div class="qcard"><div class="qhead"><span>${c.cat ? '🐱 ' : ''}${esc(r.themes[c.ti].name)}</span><span class="v">${c.v}</span></div>
     ${q.img && window.MG_BUILD === 'pages' ? `<img class="qimg" src="img/${esc(q.img)}.webp" alt="Картинка к вопросу">` : q.pic ? `<div class="pic" role="img" aria-label="Картинка к вопросу">${esc(q.pic)}</div>` : ''}
+    ${q.audio ? audioHtml(q, P.ph === 'reveal') : ''}
     <div class="qtext">${esc(q.q)}</div></div>${action}${attemptsHtml(c)}`;
+}
+// Озвученный пересказ: играет у всех при открытии вопроса, можно переслушать.
+// На странице без файлов (claude.ai) вместо звука показываем текст пересказа.
+function audioHtml(q, reveal) {
+  if (window.MG_BUILD !== 'pages') return `<div class="say">«${esc(q.say)}»</div>`;
+  return `<button class="btn sec playbtn" data-a="play" data-src="audio/${esc(q.audio)}.mp3" type="button">🔊 Слушать ещё раз</button>
+    ${reveal ? `<div class="say">«${esc(q.say)}»</div>` : ''}`;
+}
+// один плеер на всю страницу — перерисовка экрана его не прерывает
+const qa = new Audio();
+const played = {};
+// iPhone разрешает звук только после касания: при первом касании «будим» плеер тишиной
+document.addEventListener('pointerdown', function unlock() {
+  document.removeEventListener('pointerdown', unlock, true);
+  if (qa.src) return;
+  qa.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+  qa.play().then(() => qa.pause()).catch(() => {});
+}, true);
+function playQ(src) {
+  if (!src) return;
+  if (!qa.src.endsWith(src)) qa.src = src;
+  qa.currentTime = 0;
+  qa.play().catch(() => toast('Нажми «🔊 Слушать», чтобы услышать пересказ'));
+}
+function autoPlay() {
+  const b = document.querySelector('[data-a=play]'), P = app.P;
+  if (!b || !P?.cur) return;
+  const k = P.ri + ':' + P.cur.ti + ':' + P.cur.qi;
+  if (played[k] || P.ph !== 'reading') return;
+  played[k] = true;
+  playQ(b.dataset.src);
 }
 
 function scoreOf(n) { return players().find((p) => p.name === n)?.score ?? 0; }
@@ -971,7 +1010,9 @@ function bind() {
   });
   main.querySelectorAll('[data-cat]').forEach((b) => b.onclick = () => act('cat', { to: b.dataset.cat, who: app.P.ch }));
   main.querySelectorAll('[data-lbuzz]').forEach((b) => b.addEventListener('pointerdown', (e) => { e.preventDefault(); act('buzz', { who: b.dataset.lbuzz, rt: 0 }); }));
+  autoPlay();
   const actions = {
+    play: (b) => playQ(b.dataset.src),
     host: () => { store.del('host'); hostOnline(null); },
     hostResume: () => hostOnline(store.get('host')),
     join: () => joinOnline($('#code').value),
